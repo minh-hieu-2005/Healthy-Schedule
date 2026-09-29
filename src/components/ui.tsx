@@ -175,7 +175,9 @@ export function NumInput({
   id?: string;
 }) {
   const [txt, setTxt] = useState(String(value));
-  useEffect(() => setTxt(String(value)), [value]);
+  useEffect(() => {
+    setTxt(String(value));
+  }, [value]);
   const commit = () => {
     const n = Number(txt);
     const v = Number.isFinite(n) && txt.trim() !== "" ? Math.min(max, Math.max(min, Math.round(n))) : value;

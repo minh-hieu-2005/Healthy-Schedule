@@ -8,13 +8,16 @@ import "@fontsource/be-vietnam-pro/700.css";
 import "@fontsource/be-vietnam-pro/800.css";
 import "./index.css";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // HashRouter: các đường dẫn dạng /#/hom-nay nên tải lại trang
 // trên GitHub Pages không bị lỗi 404.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );

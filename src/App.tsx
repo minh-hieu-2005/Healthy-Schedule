@@ -122,7 +122,11 @@ function RequireProfile({ children }: { children: ReactNode }) {
 export default function App() {
   usePlanSync();
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Lưu ý: dùng dấu ngoặc {} để effect KHÔNG trả về giá trị. Ở Chrome bản mới,
+  // window.scrollTo() trả về Promise; nếu trả về từ effect, React sẽ lỗi khi chuyển trang.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
