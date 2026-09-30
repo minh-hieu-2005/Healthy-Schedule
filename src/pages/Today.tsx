@@ -2,16 +2,14 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  BellRing,
   BrainCircuit,
+  Droplets,
   Check,
-  Crown,
   Info,
-  Lock,
   Plus,
   RefreshCw,
   ShieldAlert,
-  Sparkles,
-  Zap,
 } from "lucide-react";
 import { computeTodayPlan, peakFor, useStore } from "../store/useStore";
 import { planRange, lastOverloadBefore, OVERLOAD_GAP_DAYS, overloadAllowedOn } from "../engine/scheduler";
@@ -31,9 +29,9 @@ import {
   weekday,
 } from "../engine/time";
 import { CAT, LEVEL_META, PRIORITY_META } from "../lib/categories";
-import { Modal, ProgressRing, SectionTitle, Toggle } from "../components/ui";
+import { Modal, ProgressRing, SectionTitle } from "../components/ui";
 import TaskForm from "../components/TaskForm";
-import { alternativesFor } from "../engine/suggestions";
+import { notifyPermission, requestNotifyPermission, systemNotify } from "../lib/notify";
 
 export default function Today() {
   const s = useStore();
@@ -50,9 +48,6 @@ export default function Today() {
             {
               profile: s.profile,
               tasks: s.tasks,
-              premium: s.premium,
-              studyAtSchool: s.studyAtSchool,
-              urgentDates: s.urgentDates,
               logs: s.logs,
               today,
               peak,
@@ -61,7 +56,7 @@ export default function Today() {
             7,
           )
         : [],
-    [s.profile, s.tasks, s.premium, s.studyAtSchool, s.urgentDates, s.logs, s.plans, today, peak],
+    [s.profile, s.tasks, s.logs, s.plans, today, peak],
   );
   const offset = diffDays(today, date);
   const plan: DayPlan | undefined = offset >= 0 ? range[offset] : s.plans[date];
@@ -98,7 +93,6 @@ export default function Today() {
   const doneCount = plan.blocks.filter(isDone).length;
   const taskMin = plan.blocks.filter((b) => b.cat === "task").reduce((a, b) => a + b.end - b.start, 0);
   const lv = LEVEL_META[plan.level];
-  const urgentOn = s.urgentDates.includes(date);
   const hour = new Date().getHours();
   const hello = hour < 11 ? "Chào buổi sáng" : hour < 14 ? "Chào buổi trưa" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
 
@@ -151,18 +145,11 @@ export default function Today() {
                   <RefreshCw size={17} /> Xếp lại lịch
                 </button>
               )}
-              {offset >= 0 && (
-                <div className="flex items-center gap-2.5 rounded-full bg-white border border-line pl-3.5 pr-1.5 py-1">
-                  <Zap size={16} className="text-coral" />
-                  <span className="text-sm font-semibold">Rất gấp</span>
-                  {s.premium ? (
-                    <Toggle checked={urgentOn} onChange={() => s.toggleUrgent(date)} label="Chế độ rất gấp" />
-                  ) : (
-                    <Link to="/premium" className="chip bg-lime text-ink" title="Tính năng Premium">
-                      <Lock size={12} /> Premium
-                    </Link>
-                  )}
-                </div>
+              {date === today && s.reminders.water && (
+                <span className="flex items-center gap-2 rounded-full bg-white border border-line px-3.5 py-2 text-sm font-semibold">
+                  <Droplets size={16} className="text-[#1683b8]" />
+                  Đã uống nước {s.water[today] ?? 0}/{s.reminders.waterTimes.length} lần nhắc
+                </span>
               )}
             </div>
           </section>
@@ -175,38 +162,7 @@ export default function Today() {
             </section>
           )}
 
-          {plan.suggestions.length > 0 &&
-            (s.premium ? (
-              <section className="card p-5">
-                <SectionTitle>
-                  <span className="flex items-center gap-2">
-                    <Sparkles size={18} className="text-brand" /> Gợi ý thay thế cho hôm nay
-                  </span>
-                </SectionTitle>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {plan.suggestions.map((sg) => (
-                    <div key={sg.id} className="rounded-2xl p-4" style={{ background: CAT[sg.forCat].tint }}>
-                      <p className="font-semibold text-sm">{sg.title}</p>
-                      <ul className="mt-2 space-y-1 text-sm text-ink-2">
-                        {sg.options.map((o) => (
-                          <li key={o}>• {o}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : (
-              <Link to="/premium" className="card p-4 flex items-center gap-3 hover:border-brand transition-colors">
-                <span className="h-10 w-10 rounded-2xl bg-lime flex items-center justify-center shrink-0">
-                  <Crown size={20} />
-                </span>
-                <span className="flex-1 text-sm">
-                  <b>Có {plan.suggestions.length} gợi ý thay thế</b> cho những hoạt động bị rút gọn hôm nay (đặt món ship, cardio nhẹ…).
-                  <span className="text-brand font-semibold"> Mở khoá với Premium →</span>
-                </span>
-              </Link>
-            ))}
+          {date === today && <NotifyBanner />}
 
           {/* Thời gian biểu */}
           <section className="card p-4 md:p-5">
@@ -353,7 +309,7 @@ function Timeline({
   let nowShown = !isToday;
   const blocks = plan.blocks;
   blocks.forEach((b, i) => {
-    if (!b.atSchool && b.start - cursor >= 20 && b.cat !== "sleep") {
+    if (b.start - cursor >= 20 && b.cat !== "sleep") {
       if (!nowShown && now < b.start && now >= cursor) {
         rows.push(<NowLine key={`now-${i}`} now={now} />);
         nowShown = true;
@@ -381,7 +337,7 @@ function Timeline({
         task={b.taskId ? taskMap.get(b.taskId) : undefined}
       />,
     );
-    if (!b.atSchool) cursor = Math.max(cursor, b.end);
+    cursor = Math.max(cursor, b.end);
   });
   return <ol className="space-y-1.5">{rows}</ol>;
 }
@@ -414,7 +370,7 @@ function BlockRow({
   const m = CAT[b.cat];
   const len = b.end - b.start;
   return (
-    <li className={`flex items-stretch gap-2 ${b.atSchool ? "ml-6 md:ml-10" : ""}`}>
+    <li className="flex items-stretch gap-2">
       <div className="w-14 shrink-0 text-right pt-3">
         <span className="text-sm font-bold">{fmtTime(b.start)}</span>
         <span className="block text-[11px] text-ink-3">{fmtTime(b.end)}</span>
@@ -438,9 +394,8 @@ function BlockRow({
                 · Hạn {task.deadlineTime} {fmtDateShort(task.deadlineDate)}
               </span>
             )}
-            {b.atSchool && <span className="chip bg-white/80 text-[#1d5aa3]">🎒 Tranh thủ giờ học</span>}
             {b.shortened && b.note && <span className="chip bg-white/80 text-[#b8431a]">{b.note}</span>}
-            {!b.shortened && b.note && !b.atSchool && <span className="text-ink-3">{b.note}</span>}
+            {!b.shortened && b.note && <span className="text-ink-3">{b.note}</span>}
             {b.missed && <span className="chip bg-white text-[#b8431a]">Bỏ lỡ – đã xếp lại</span>}
           </span>
         </button>
@@ -557,7 +512,6 @@ function BlockDetail({
   if (!block) return null;
   const m = CAT[block.cat];
   const task = block.taskId ? taskMap.get(block.taskId) : undefined;
-  const alt = alternativesFor(block.cat, date, s.profile?.exercise.kind ?? "");
   return (
     <Modal open onClose={onClose} title={block.title}>
       <div className="space-y-4">
@@ -593,28 +547,56 @@ function BlockDetail({
             </div>
           </div>
         )}
-        {alt &&
-          (s.premium ? (
-            <div className="rounded-2xl border border-line p-4">
-              <p className="font-semibold text-sm flex items-center gap-2">
-                <Sparkles size={16} className="text-brand" /> {alt.title}
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-ink-2">
-                {alt.options.map((o) => (
-                  <li key={o}>• {o}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <Link to="/premium" onClick={onClose} className="flex items-center gap-3 rounded-2xl border border-dashed border-line p-4 text-sm hover:border-brand">
-              <Lock size={18} className="text-brand" />
-              <span>
-                Không có thời gian cho hoạt động này? <b>Premium</b> gợi ý phương án thay thế phù hợp.
-              </span>
-            </Link>
-          ))}
-        {!task && !alt && <p className="text-sm text-ink-2">Hoạt động cố định trong lịch của bạn. Chỉnh sửa trong phần Cài đặt.</p>}
+        {!task && <p className="text-sm text-ink-2">Hoạt động cố định trong lịch của bạn. Chỉnh sửa trong phần Cài đặt.</p>}
       </div>
     </Modal>
+  );
+}
+
+/** Gợi ý bật thông báo hệ thống (để nhắc cả khi đang ở tab khác). */
+function NotifyBanner() {
+  const [perm, setPerm] = useState(notifyPermission());
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem("sl-hide-notify") === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (perm !== "default" || hidden) return null;
+  return (
+    <section className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+      <span className="h-10 w-10 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
+        <BellRing size={20} />
+      </span>
+      <p className="flex-1 text-sm">
+        <b>Bật thông báo</b> để Smart Life nhắc bạn uống nước và báo deadline sắp tới – kể cả khi bạn đang mở tab hay ứng dụng khác.
+      </p>
+      <div className="flex gap-2">
+        <button
+          className="btn btn-ghost text-sm py-2"
+          onClick={() => {
+            setHidden(true);
+            try {
+              sessionStorage.setItem("sl-hide-notify", "1");
+            } catch {
+              /* bỏ qua */
+            }
+          }}
+        >
+          Để sau
+        </button>
+        <button
+          className="btn btn-primary text-sm py-2"
+          onClick={async () => {
+            const p = await requestNotifyPermission();
+            setPerm(p);
+            if (p === "granted") void systemNotify("Smart Life", "Đã bật thông báo! Bạn sẽ được nhắc uống nước và deadline.", "welcome");
+          }}
+        >
+          Bật thông báo
+        </button>
+      </div>
+    </section>
   );
 }

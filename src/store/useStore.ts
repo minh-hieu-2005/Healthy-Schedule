@@ -1,6 +1,6 @@
-// Trạng thái ứng dụng — lưu trong localStorage của trình duyệt.
+// Trạng thái ứng dụng của NGƯỜI DÙNG ĐANG ĐĂNG NHẬP.
+// Việc lưu/tải theo từng tài khoản do src/cloud/sync.ts đảm nhiệm.
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import type { Block, DayLog, DayPlan, Profile, Task } from "../engine/types";
 import { demoLogs, demoProfile, demoTasks, uid } from "../engine/demo";
 import {
@@ -12,7 +12,20 @@ import {
 import { predict, summarize } from "../engine/predict";
 import { addDays, diffDays, nowMin, todayStr } from "../engine/time";
 
-export interface AppState {
+export interface ReminderSettings {
+  water: boolean;
+  waterTimes: string[];
+  deadline: boolean;
+}
+
+export const defaultReminders = (): ReminderSettings => ({
+  water: true,
+  waterTimes: ["08:00", "14:00", "17:00"],
+  deadline: true,
+});
+
+/** Phần dữ liệu được lưu lên tài khoản. */
+export interface UserData {
   profile: Profile | null;
   tasks: Task[];
   /** checklist: ngày -> danh sách key block đã hoàn thành */
@@ -20,12 +33,15 @@ export interface AppState {
   /** lịch đã chốt của hôm nay và các ngày đã qua */
   plans: Record<string, DayPlan>;
   logs: Record<string, DayLog>;
-  premium: boolean;
-  premiumSince?: string;
-  studyAtSchool: boolean;
-  urgentDates: string[];
+  reminders: ReminderSettings;
+  /** nhắc nhở đã hiện (để không hiện lặp lại): key -> thời điểm */
+  notified: Record<string, number>;
+  /** số lần đã uống nước theo ngày (bấm "Đã uống" trên thông báo) */
+  water: Record<string, number>;
   isDemo: boolean;
+}
 
+export interface AppState extends UserData {
   setProfile: (p: Profile) => void;
   addTask: (t: Omit<Task, "id" | "createdAt" | "done">) => void;
   updateTask: (id: string, patch: Partial<Task>) => void;
@@ -34,132 +50,112 @@ export interface AppState {
   toggleCheck: (date: string, key: string) => void;
   savePlan: (plan: DayPlan) => void;
   saveLog: (log: DayLog) => void;
-  activatePremium: () => void;
-  cancelPremium: () => void;
-  setStudyAtSchool: (v: boolean) => void;
-  toggleUrgent: (date: string) => void;
+  setReminders: (r: Partial<ReminderSettings>) => void;
+  markNotified: (keys: string[], at?: number) => void;
+  addWater: (date: string) => void;
   loadDemo: () => void;
   resetAll: () => void;
+  /** nạp dữ liệu của tài khoản vừa đăng nhập */
+  hydrate: (d: Partial<UserData>) => void;
 }
 
-const emptyState = {
+export const emptyData = (): UserData => ({
   profile: null,
   tasks: [],
   checks: {},
   plans: {},
   logs: {},
-  premium: false,
-  premiumSince: undefined,
-  studyAtSchool: false,
-  urgentDates: [],
+  reminders: defaultReminders(),
+  notified: {},
+  water: {},
   isDemo: false,
-};
+});
 
-/** Giữ lại dữ liệu lịch tối đa 60 ngày cho gọn. */
+export const DATA_KEYS = Object.keys(emptyData()) as (keyof UserData)[];
+
+/** Lấy phần dữ liệu cần lưu từ state. */
+export const pickData = (s: AppState): UserData =>
+  Object.fromEntries(DATA_KEYS.map((k) => [k, s[k]])) as unknown as UserData;
+
+/** Giữ lại dữ liệu theo ngày trong một khoảng cho gọn. */
 const prune = <T,>(rec: Record<string, T>, today: string, keep = 60) =>
   Object.fromEntries(Object.entries(rec).filter(([d]) => diffDays(d, today) <= keep));
 
-export const useStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      ...emptyState,
+export const useStore = create<AppState>()((set, get) => ({
+  ...emptyData(),
 
-      setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => set({ profile }),
 
-      addTask: (t) =>
-        set((s) => ({ tasks: [...s.tasks, { ...t, id: uid(), createdAt: Date.now(), done: false }] })),
+  addTask: (t) =>
+    set((s) => ({ tasks: [...s.tasks, { ...t, id: uid(), createdAt: Date.now(), done: false }] })),
 
-      updateTask: (id, patch) =>
-        set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+  updateTask: (id, patch) =>
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
 
-      deleteTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+  deleteTask: (id) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
 
-      setTaskDone: (id, done, date = todayStr()) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
-            t.id === id ? { ...t, done, doneDate: done ? date : undefined } : t,
-          ),
-        })),
+  setTaskDone: (id, done, date = todayStr()) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === id ? { ...t, done, doneDate: done ? date : undefined } : t)),
+    })),
 
-      toggleCheck: (date, key) => {
-        const s = get();
-        const cur = new Set(s.checks[date] ?? []);
-        if (cur.has(key)) cur.delete(key);
-        else cur.add(key);
-        const checks = { ...s.checks, [date]: [...cur] };
-        // nếu mọi phiên của 1 task trong ngày đã tick -> đánh dấu task hoàn thành
-        const plan = s.plans[date];
-        let tasks = s.tasks;
-        const block = plan?.blocks.find((b) => b.key === key);
-        if (plan && block?.taskId) {
-          const all = plan.blocks.filter((b) => b.taskId === block.taskId && !b.missed);
-          const allDone = all.every((b) => cur.has(b.key));
-          const t = s.tasks.find((x) => x.id === block.taskId);
-          if (t && allDone && !t.done && plan.unfit.every((u) => u.taskId !== t.id))
-            tasks = s.tasks.map((x) => (x.id === t.id ? { ...x, done: true, doneDate: date } : x));
-          if (t && !allDone && t.done && t.doneDate === date)
-            tasks = s.tasks.map((x) => (x.id === t.id ? { ...x, done: false, doneDate: undefined } : x));
-        }
-        set({ checks, tasks });
-      },
+  toggleCheck: (date, key) => {
+    const s = get();
+    const cur = new Set(s.checks[date] ?? []);
+    if (cur.has(key)) cur.delete(key);
+    else cur.add(key);
+    const checks = { ...s.checks, [date]: [...cur] };
+    // nếu mọi phiên của 1 task trong ngày đã tick -> đánh dấu task hoàn thành
+    const plan = s.plans[date];
+    let tasks = s.tasks;
+    const block = plan?.blocks.find((b) => b.key === key);
+    if (plan && block?.taskId) {
+      const all = plan.blocks.filter((b) => b.taskId === block.taskId && !b.missed);
+      const allDone = all.every((b) => cur.has(b.key));
+      const t = s.tasks.find((x) => x.id === block.taskId);
+      if (t && allDone && !t.done && plan.unfit.every((u) => u.taskId !== t.id))
+        tasks = s.tasks.map((x) => (x.id === t.id ? { ...x, done: true, doneDate: date } : x));
+      if (t && !allDone && t.done && t.doneDate === date)
+        tasks = s.tasks.map((x) => (x.id === t.id ? { ...x, done: false, doneDate: undefined } : x));
+    }
+    set({ checks, tasks });
+  },
 
-      savePlan: (plan) =>
-        set((s) => ({ plans: prune({ ...s.plans, [plan.date]: plan }, todayStr()) })),
+  // lịch chi tiết giữ 21 ngày, nhật ký thống kê giữ 60 ngày
+  savePlan: (plan) => set((s) => ({ plans: prune({ ...s.plans, [plan.date]: plan }, todayStr(), 21) })),
+  saveLog: (log) => set((s) => ({ logs: prune({ ...s.logs, [log.date]: log }, todayStr()) })),
 
-      saveLog: (log) => set((s) => ({ logs: prune({ ...s.logs, [log.date]: log }, todayStr()) })),
-
-      activatePremium: () => set({ premium: true, premiumSince: todayStr() }),
-      cancelPremium: () => set({ premium: false, premiumSince: undefined, studyAtSchool: false, urgentDates: [] }),
-      setStudyAtSchool: (v) => set({ studyAtSchool: v }),
-      toggleUrgent: (date) =>
-        set((s) => ({
-          urgentDates: s.urgentDates.includes(date)
-            ? s.urgentDates.filter((d) => d !== date)
-            : [...s.urgentDates.filter((d) => d >= todayStr()), date],
-        })),
-
-      loadDemo: () => {
-        const today = todayStr();
-        const base = {
-          ...emptyState,
-          profile: demoProfile(),
-          tasks: demoTasks(today),
-          logs: demoLogs(today),
-          isDemo: true,
-        };
-        set(base);
-        // lịch mẫu của hôm nay được xếp cho cả ngày (không phụ thuộc giờ mở web)
-        const plan = computeTodayPlan(get(), today, { fullDay: true });
-        const checks = demoChecks(plan, today);
-        set({ plans: { [today]: plan }, checks: { [today]: checks } });
-        const st = get();
-        set({ logs: { ...st.logs, [today]: summarize(plan, new Set(checks), st.tasks) } });
-      },
-
-      resetAll: () => set({ ...emptyState }),
+  setReminders: (r) => set((s) => ({ reminders: { ...s.reminders, ...r } })),
+  markNotified: (keys, at = Date.now()) =>
+    set((s) => {
+      const cutoff = Date.now() - 14 * 86400000; // dọn các mục cũ hơn 14 ngày
+      const kept = Object.fromEntries(Object.entries(s.notified).filter(([, t]) => t > cutoff));
+      for (const k of keys) kept[k] = at;
+      return { notified: kept };
     }),
-    {
-      name: "smart-life-v1",
-      version: 1,
-      storage: createJSONStorage(() => {
-        try {
-          const k = "__sl_test__";
-          localStorage.setItem(k, "1");
-          localStorage.removeItem(k);
-          return localStorage;
-        } catch {
-          // trình duyệt chặn localStorage -> lưu tạm trong bộ nhớ
-          const mem = new Map<string, string>();
-          return {
-            getItem: (k: string) => mem.get(k) ?? null,
-            setItem: (k: string, v: string) => void mem.set(k, v),
-            removeItem: (k: string) => void mem.delete(k),
-          };
-        }
-      }),
-    },
-  ),
-);
+  addWater: (date) => set((s) => ({ water: prune({ ...s.water, [date]: (s.water[date] ?? 0) + 1 }, todayStr(), 30) })),
+
+  loadDemo: () => {
+    const today = todayStr();
+    const keep = { reminders: get().reminders };
+    set({ ...emptyData(), ...keep, profile: demoProfile(), tasks: demoTasks(today), logs: demoLogs(today), isDemo: true });
+    // lịch mẫu của hôm nay được xếp cho cả ngày (không phụ thuộc giờ mở web)
+    const plan = computeTodayPlan(get(), today, { fullDay: true });
+    const checks = demoChecks(plan, today);
+    set({ plans: { [today]: plan }, checks: { [today]: checks } });
+    const st = get();
+    set({ logs: { ...st.logs, [today]: summarize(plan, new Set(checks), st.tasks) } });
+  },
+
+  resetAll: () => set({ ...emptyData() }),
+
+  hydrate: (d) =>
+    set({
+      ...emptyData(),
+      ...d,
+      reminders: { ...defaultReminders(), ...(d.reminders ?? {}) },
+    }),
+}));
 
 /** Demo: tick sẵn các hoạt động buổi sáng để thấy checklist hoạt động. */
 function demoChecks(plan: DayPlan, today: string): string[] {
@@ -180,9 +176,6 @@ export function todaySig(s: AppState, today: string): string {
     p: s.profile,
     t: tasksForToday(s.tasks, today).map((t) => [t.id, t.title, t.estimate, t.deadlineDate, t.deadlineTime, t.priority]),
     d: s.tasks.filter((t) => t.done && t.doneDate === today).map((t) => t.id),
-    pr: s.premium,
-    sc: s.studyAtSchool,
-    u: s.urgentDates.includes(today),
     ov: overloadAllowedOn(today, lastOv),
     pk: peakFor(s.logs, today),
   });
@@ -223,9 +216,6 @@ export function computeTodayPlan(
     date: today,
     profile,
     tasks: tasksForToday(s.tasks, today),
-    premium: s.premium,
-    urgent: s.urgentDates.includes(today),
-    studyAtSchool: s.studyAtSchool,
     overloadAllowed: overloadAllowedOn(today, lastOv),
     // không xếp phần việc còn lại vào khoảng thời gian đã qua
     notBefore: opts.fullDay ? undefined : now,

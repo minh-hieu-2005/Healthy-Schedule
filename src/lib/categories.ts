@@ -49,9 +49,6 @@ export const PRIORITY_META = {
 export const LEVEL_META: Record<number, { cls: string; emoji: string; desc: string }> = {
   0: { cls: "bg-[#dcf6ec] text-[#0f7a55]", emoji: "🌿", desc: "Lịch thoải mái, đủ ngủ và có thời gian giải trí." },
   1: { cls: "bg-[#fff4d6] text-[#8a5d00]", emoji: "⚖️", desc: "Nhiều việc – đã tạm bỏ bớt hoạt động tuỳ chọn." },
-  2: { cls: "bg-[#e3effc] text-[#1d5aa3]", emoji: "🎒", desc: "Tranh thủ giờ học để giữ đủ giờ ngủ." },
-  3: { cls: "bg-[#fdebe3] text-[#b8431a]", emoji: "🔥", desc: "Quá tải – đã rút ngắn ăn, ngủ, tập." },
-  4: { cls: "bg-[#fdebe3] text-[#b8431a]", emoji: "🔥", desc: "Quá tải – ngủ ở mức tối thiểu 6 tiếng." },
-  5: { cls: "bg-[#ffe1e1] text-[#b3261e]", emoji: "🚨", desc: "Chế độ rất gấp – ngủ dưới 6 tiếng." },
-  6: { cls: "bg-[#ffe1e1] text-[#b3261e]", emoji: "🚨", desc: "Chế độ rất gấp – ngủ dưới 6 tiếng." },
+  2: { cls: "bg-[#fdebe3] text-[#b8431a]", emoji: "🔥", desc: "Quá tải – đã rút ngắn ăn, ngủ, tập." },
+  3: { cls: "bg-[#ffe1e1] text-[#b3261e]", emoji: "🔥", desc: "Quá tải – giấc ngủ ở mức tối thiểu 6 tiếng." },
 };

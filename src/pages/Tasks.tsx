@@ -23,9 +23,6 @@ export default function Tasks() {
             {
               profile: s.profile,
               tasks: s.tasks,
-              premium: s.premium,
-              studyAtSchool: s.studyAtSchool,
-              urgentDates: s.urgentDates,
               logs: s.logs,
               today,
               peak: peakFor(s.logs, today),
@@ -34,7 +31,7 @@ export default function Tasks() {
             14,
           )
         : [],
-    [s.profile, s.tasks, s.premium, s.studyAtSchool, s.urgentDates, s.logs, s.plans, today],
+    [s.profile, s.tasks, s.logs, s.plans, today],
   );
 
   const schedule = (id: string) => {

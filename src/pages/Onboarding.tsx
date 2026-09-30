@@ -7,6 +7,7 @@ import { defaultProfile } from "../engine/demo";
 import type { Profile } from "../engine/types";
 import { useStore } from "../store/useStore";
 import { toMin } from "../engine/time";
+import { useSession } from "../cloud/session";
 
 const STEPS = [
   { title: "Về bạn", sub: "Giờ giấc cơ bản để Smart Life bảo vệ giấc ngủ của bạn." },
@@ -19,7 +20,8 @@ export default function Onboarding() {
   const nav = useNavigate();
   const existing = useStore((s) => s.profile);
   const setProfile = useStore((s) => s.setProfile);
-  const [p, setP] = useState<Profile>(() => existing ?? defaultProfile());
+  const googleName = useSession((st) => st.user?.name ?? "");
+  const [p, setP] = useState<Profile>(() => existing ?? { ...defaultProfile(), name: googleName.split(" ").slice(-1)[0] ?? "" });
   const [step, setStep] = useState(0);
   const set = (fn: (x: Profile) => Profile) => setP(fn);
 

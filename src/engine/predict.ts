@@ -95,8 +95,7 @@ export function summarize(plan: DayPlan, checked: Set<string>, tasks: Task[]): D
     checked.has(b.key) || (!!b.taskId && !!tasks.find((t) => t.id === b.taskId && t.done && t.doneDate === plan.date));
   for (const b of plan.blocks) {
     const len = b.end - b.start;
-    if (!b.atSchool) minutes[b.cat] = (minutes[b.cat] ?? 0) + len;
-    else minutes.task = (minutes.task ?? 0) + len;
+    minutes[b.cat] = (minutes[b.cat] ?? 0) + len;
     const d = isDone(b);
     if (d) blocksDone++;
     if (b.cat === "task") {

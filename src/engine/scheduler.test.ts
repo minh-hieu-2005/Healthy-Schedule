@@ -26,15 +26,12 @@ const base = (profile: Profile, tasks: Task[], extra = {}) => ({
   date: DAY,
   profile,
   tasks,
-  premium: false,
-  urgent: false,
-  studyAtSchool: false,
   overloadAllowed: true,
   ...extra,
 });
 
 const noOverlap = (blocks: Block[]) => {
-  const real = blocks.filter((b) => !b.atSchool).sort((a, b) => a.start - b.start);
+  const real = [...blocks].sort((a, b) => a.start - b.start);
   for (let i = 1; i < real.length; i++) expect(real[i].start).toBeGreaterThanOrEqual(real[i - 1].end);
 };
 
@@ -80,23 +77,11 @@ describe("planDay", () => {
     expect(p.moved.length).toBeGreaterThan(0);
   });
 
-  it("Premium – chế độ rất gấp: được ngủ dưới 6 tiếng và có cảnh báo", () => {
-    const p = planDay(base(demoProfile(), [task("a", 600, 0), task("b", 200, 3)], { premium: true, urgent: true }));
-    expect(p.moved.map((m) => m.taskId)).toContain("b");
-    expect(p.sleepMin).toBeLessThan(SLEEP_FLOOR);
-    expect(p.warnings.some((w) => w.kind === "danger" && w.title.includes("ngủ"))).toBe(true);
-  });
-
-  it("bản free không bao giờ ngủ dưới 6 tiếng kể cả khi bật cờ urgent", () => {
-    const p = planDay(base(demoProfile(), [task("a", 600, 0)], { premium: false, urgent: true }));
-    expect(p.sleepMin).toBeGreaterThanOrEqual(SLEEP_FLOOR);
+  it("không bao giờ ngủ dưới 6 tiếng; khi chạm mức 6 tiếng thì cảnh báo thiếu ngủ", () => {
+    const p = planDay(base(demoProfile(), [task("a", 600, 0)]));
+    expect(p.sleepMin).toBe(SLEEP_FLOOR);
+    expect(p.warnings.some((w) => w.kind === "danger" && w.title.includes("thiếu ngủ"))).toBe(true);
     expect(p.unfit.length).toBe(1);
-  });
-
-  it("Premium – tranh thủ giờ học: xếp task vào giờ học trước khi cắt giờ ngủ", () => {
-    const p = planDay(base(demoProfile(), [task("a", 360, 0)], { premium: true, studyAtSchool: true }));
-    expect(p.blocks.some((b) => b.atSchool)).toBe(true);
-    expect(p.sleepMin).toBe(480);
   });
 
   it("task có hạn trong ngày chỉ được xếp trước giờ hạn", () => {
@@ -133,7 +118,7 @@ describe("planRange", () => {
   it("task bị dời hôm nay xuất hiện ở ngày mai", () => {
     const tasks = [task("due", 240, 0), task("later", 300, 4), task("mid", 120, 1)];
     const days = planRange(
-      { profile: demoProfile(), tasks, premium: false, studyAtSchool: false, urgentDates: [], logs: {}, today: DAY },
+      { profile: demoProfile(), tasks, logs: {}, today: DAY },
       3,
     );
     const movedIds = days[0].moved.map((m) => m.taskId);

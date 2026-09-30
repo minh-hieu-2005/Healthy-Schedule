@@ -5,9 +5,12 @@ import {
   BarChart3,
   BrainCircuit,
   CalendarClock,
+  BellRing,
   CheckCircle2,
-  Crown,
+  CloudCheck,
+  Droplets,
   ListChecks,
+  Smartphone,
   MoonStar,
   Scale,
   Sparkles,
@@ -17,7 +20,7 @@ import Logo from "../components/Logo";
 import { useStore } from "../store/useStore";
 import { CAT } from "../lib/categories";
 import type { Category } from "../engine/types";
-import { PREMIUM_PRICE } from "./Premium";
+import { useSession } from "../cloud/session";
 
 const FEATURES = [
   { icon: UserRoundCog, title: "Lịch riêng cho bạn", text: "Giờ ngủ, bữa ăn, lịch học, lịch làm, buổi tập… bạn sống thế nào thì lịch xếp như thế." },
@@ -28,6 +31,10 @@ const FEATURES = [
   { icon: ListChecks, title: "Checklist mỗi ngày", text: "Tick từng hoạt động đã làm. Xong hết các phiên của một task thì task tự hoàn thành." },
   { icon: BarChart3, title: "Biểu đồ ngày / tuần / tháng", text: "Xem bạn ngủ bao nhiêu, học bao nhiêu, vận động bao nhiêu – rõ ràng, trực quan." },
   { icon: BrainCircuit, title: "Dự đoán giờ năng suất", text: "Học từ lịch sử checklist để biết khung giờ bạn làm việc hiệu quả nhất ngày mai." },
+  { icon: Droplets, title: "Nhắc uống nước", text: "Thông báo bật lên màn hình lúc 8h, 14h và 17h (có thể đổi giờ) để bạn không quên uống nước." },
+  { icon: BellRing, title: "Nhắc deadline quan trọng", text: "Task ưu tiên cao được nhắc trước 24 tiếng, 3 tiếng và 1 tiếng; task khác nhắc trước 1 tiếng." },
+  { icon: CloudCheck, title: "Tài khoản Google riêng", text: "Đăng nhập bằng Gmail, dữ liệu của mỗi người được lưu riêng trên đám mây, đổi máy vẫn còn." },
+  { icon: Smartphone, title: "Dùng tốt trên điện thoại", text: "Giao diện gọn gàng trên cả máy tính và điện thoại, mở bằng trình duyệt là dùng được ngay." },
 ];
 
 const PREVIEW: { t: string; cat: Category; title: string; done?: boolean }[] = [
@@ -43,8 +50,11 @@ export default function Landing() {
   const nav = useNavigate();
   const profile = useStore((s) => s.profile);
   const loadDemo = useStore((s) => s.loadDemo);
+  const signedIn = useSession((s) => s.status === "signedIn" && s.ready);
 
+  const start = () => nav(!signedIn ? "/dang-nhap" : profile ? "/hom-nay" : "/bat-dau");
   const tryDemo = () => {
+    if (!signedIn) return nav("/dang-nhap?demo=1");
     if (profile && !confirmReplace()) return;
     loadDemo();
     nav("/hom-nay");
@@ -55,13 +65,13 @@ export default function Landing() {
       <div className="blob-bg">
         <header className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
           <Logo />
-          {profile ? (
-            <button className="btn btn-primary text-sm" onClick={() => nav("/hom-nay")}>
+          {signedIn ? (
+            <button className="btn btn-primary text-sm" onClick={start}>
               Mở lịch của tôi <ArrowRight size={16} />
             </button>
           ) : (
-            <button className="btn btn-ghost text-sm" onClick={() => nav("/bat-dau")}>
-              Bắt đầu
+            <button className="btn btn-ghost text-sm" onClick={() => nav("/dang-nhap")}>
+              Đăng nhập
             </button>
           )}
         </header>
@@ -83,14 +93,14 @@ export default function Landing() {
               lấp bài tập, deadline vào thời gian rảnh. Nhiều việc quá? Lịch tự cân bằng lại cho bạn.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <button className="btn btn-primary text-base px-6 py-3.5" onClick={() => nav(profile ? "/hom-nay" : "/bat-dau")}>
-                {profile ? "Xem lịch hôm nay" : "Tạo lịch của tôi"} <ArrowRight size={18} />
+              <button className="btn btn-primary text-base px-6 py-3.5" onClick={start}>
+                {signedIn && profile ? "Xem lịch hôm nay" : "Tạo lịch của tôi"} <ArrowRight size={18} />
               </button>
               <button className="btn btn-ghost text-base px-6 py-3.5" onClick={tryDemo}>
                 Xem thử với dữ liệu mẫu
               </button>
             </div>
-            <p className="mt-4 text-sm text-ink-3">Miễn phí · Không cần đăng ký · Dữ liệu lưu ngay trên trình duyệt của bạn</p>
+            <p className="mt-4 text-sm text-ink-3">Miễn phí · Đăng nhập nhanh bằng Gmail · Dữ liệu của mỗi người được lưu riêng</p>
           </div>
 
           <div className="relative mx-auto w-full max-w-sm" aria-hidden="true">
@@ -156,7 +166,7 @@ export default function Landing() {
           <h2 className="text-2xl md:text-3xl font-extrabold">3 bước là có lịch</h2>
           <ol className="mt-8 grid md:grid-cols-3 gap-6">
             {[
-              ["Kể cho Smart Life nghe", "Bạn dậy lúc mấy giờ, ngủ bao lâu, học/làm lúc nào, có tập gym hay tự nấu ăn không."],
+              ["Đăng nhập và kể cho Smart Life nghe", "Đăng nhập bằng Gmail, rồi cho biết bạn dậy lúc mấy giờ, ngủ bao lâu, học/làm lúc nào, có tập gym hay tự nấu ăn không."],
               ["Thêm task và deadline", "Tên việc, mất khoảng bao lâu, hạn nộp khi nào. Có thể thêm mô tả cho dễ nhớ."],
               ["Mở lịch và tick checklist", "Lịch tự xếp, tự cân bằng. Bạn chỉ cần làm theo và tick những gì đã xong."],
             ].map(([t, d], i) => (
@@ -178,26 +188,25 @@ export default function Landing() {
         <div className="card p-6 md:p-10 grid md:grid-cols-[1fr_auto] gap-6 items-center blob-bg">
           <div>
             <span className="chip bg-lime text-ink">
-              <Crown size={14} /> Premium
+              <BellRing size={14} /> Nhắc nhở thông minh
             </span>
-            <h2 className="mt-3 text-2xl md:text-3xl font-extrabold">Khi deadline dí sát nút</h2>
+            <h2 className="mt-3 text-2xl md:text-3xl font-extrabold">Không quên uống nước, không trễ deadline</h2>
             <ul className="mt-4 space-y-2 text-ink-2">
-              <li>⚡ Chế độ <b>rất gấp</b>: cho phép rút giờ ngủ dưới 6 tiếng (kèm cảnh báo)</li>
-              <li>🎒 <b>Tranh thủ giờ học</b> để chạy deadline khi đang ở trường</li>
-              <li>🍱 <b>Gợi ý thay thế</b>: không kịp nấu → đặt món ship; không kịp gym → cardio nhẹ</li>
+              <li>💧 Thông báo bật lên nhắc <b>uống nước lúc 8h, 14h và 17h</b></li>
+              <li>⏰ Nhắc <b>deadline quan trọng</b> trước 24 tiếng, 3 tiếng và 1 tiếng</li>
+              <li>🔔 Bật thông báo trình duyệt để được nhắc cả khi đang mở tab khác</li>
             </ul>
           </div>
-          <div className="text-center md:text-right">
-            <p className="text-4xl font-extrabold">{PREMIUM_PRICE}</p>
-            <p className="text-ink-3 text-sm">mỗi tháng · dùng thử 7 ngày</p>
-          </div>
+          <button className="btn btn-primary text-base px-6 py-3.5" onClick={start}>
+            Bắt đầu miễn phí <ArrowRight size={18} />
+          </button>
         </div>
       </section>
 
       <footer className="border-t border-line">
         <div className="mx-auto max-w-6xl px-4 py-8 flex flex-col md:flex-row gap-3 justify-between text-sm text-ink-3">
           <Logo />
-          <p>Dữ liệu của bạn chỉ được lưu trên trình duyệt này, không gửi đi đâu cả.</p>
+          <p>Dữ liệu của mỗi tài khoản được lưu riêng và chỉ chủ tài khoản xem được.</p>
         </div>
       </footer>
     </div>
@@ -205,5 +214,5 @@ export default function Landing() {
 }
 
 export function confirmReplace() {
-  return window.confirm("Dữ liệu mẫu sẽ thay thế toàn bộ dữ liệu hiện tại của bạn. Tiếp tục?");
+  return window.confirm("Dữ liệu mẫu sẽ thay thế toàn bộ dữ liệu hiện tại trong tài khoản của bạn. Tiếp tục?");
 }

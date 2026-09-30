@@ -5,33 +5,22 @@
 // task/deadline vào thời gian rảnh. Khi không đủ chỗ, hệ thống tăng dần
 // "mức cân bằng":
 //
-//   0. Bình thường       – đủ ngủ, ăn, tập, có nấu ăn + giải trí
-//   1. Cân bằng          – bỏ bớt hoạt động optional (nấu ăn, giải trí)
-//   2. Tranh thủ giờ học – (Premium) làm task trong giờ học trên trường
-//   3. Quá tải           – rút ngắn bữa ăn, tập nhẹ, ngủ ít hơn 1 tiếng
-//   4. Quá tải nặng      – ngủ còn 6 tiếng (mức sàn của bản miễn phí)
-//   5-6. Rất gấp         – (Premium) cho phép ngủ dưới 6 tiếng, có cảnh báo
+//   0. Bình thường   – đủ ngủ, ăn, tập, có nấu ăn + giải trí
+//   1. Cân bằng      – bỏ bớt hoạt động optional (nấu ăn, giải trí)
+//   2. Quá tải       – rút ngắn bữa ăn, tập nhẹ, ngủ ít hơn 1 tiếng
+//   3. Quá tải nặng  – ngủ còn 6 tiếng (mức tối thiểu) -> cảnh báo thiếu ngủ
 //
 // Quy tắc bảo vệ: mỗi 2 ngày chỉ được quá tải 1 lần (OVERLOAD_GAP_DAYS).
 // Nếu vẫn không đủ thời gian, các task CHƯA đến hạn sẽ được dời sang
 // ngày hôm sau (task có hạn xa nhất / ưu tiên thấp nhất bị dời trước).
 // =====================================================================
 
-import type {
-  Block,
-  DayLog,
-  DayPlan,
-  PlanWarning,
-  Profile,
-  Suggestion,
-  Task,
-} from "./types";
+import type { Block, DayLog, DayPlan, PlanWarning, Profile, Task } from "./types";
 import { addDays, diffDays, fmtDuration, fmtHours, round5, toMin, weekday } from "./time";
-import { buildSuggestions } from "./suggestions";
 
 /** Khoảng cách tối thiểu (ngày) giữa 2 lần quá tải. */
 export const OVERLOAD_GAP_DAYS = 2;
-/** Số phút ngủ tối thiểu ở bản miễn phí (6 tiếng). */
+/** Số phút ngủ tối thiểu (6 tiếng) — không bao giờ xếp ít hơn. */
 export const SLEEP_FLOOR = 360;
 /** Một phiên làm task dài tối đa 90 phút rồi nghỉ. */
 export const MAX_CHUNK = 90;
@@ -45,20 +34,15 @@ interface Level {
   ex: number; // hệ số thời lượng tập
   cook: boolean;
   fun: boolean;
-  school: boolean; // cho phép tranh thủ giờ học
   breakMin: number; // nghỉ giữa các phiên làm việc
   overload: boolean;
-  urgent: boolean;
 }
 
 export const LEVELS: Level[] = [
-  { id: 0, name: "Bình thường", sleep: (t) => t, meal: 1, ex: 1, cook: true, fun: true, school: false, breakMin: 10, overload: false, urgent: false },
-  { id: 1, name: "Cân bằng", sleep: (t) => t, meal: 1, ex: 1, cook: false, fun: false, school: false, breakMin: 5, overload: false, urgent: false },
-  { id: 2, name: "Tranh thủ giờ học", sleep: (t) => t, meal: 1, ex: 1, cook: false, fun: false, school: true, breakMin: 5, overload: false, urgent: false },
-  { id: 3, name: "Quá tải", sleep: (t) => Math.min(t, Math.max(SLEEP_FLOOR, t - 60)), meal: 0.75, ex: 0.5, cook: false, fun: false, school: true, breakMin: 10, overload: true, urgent: false },
-  { id: 4, name: "Quá tải", sleep: (t) => Math.min(t, SLEEP_FLOOR), meal: 0.6, ex: 0.3, cook: false, fun: false, school: true, breakMin: 5, overload: true, urgent: false },
-  { id: 5, name: "Rất gấp", sleep: (t) => Math.min(t, 300), meal: 0.6, ex: 0.3, cook: false, fun: false, school: true, breakMin: 0, overload: true, urgent: true },
-  { id: 6, name: "Rất gấp", sleep: (t) => Math.min(t, 240), meal: 0.5, ex: 0.3, cook: false, fun: false, school: true, breakMin: 0, overload: true, urgent: true },
+  { id: 0, name: "Bình thường", sleep: (t) => t, meal: 1, ex: 1, cook: true, fun: true, breakMin: 10, overload: false },
+  { id: 1, name: "Cân bằng", sleep: (t) => t, meal: 1, ex: 1, cook: false, fun: false, breakMin: 5, overload: false },
+  { id: 2, name: "Quá tải", sleep: (t) => Math.min(t, Math.max(SLEEP_FLOOR, t - 60)), meal: 0.75, ex: 0.5, cook: false, fun: false, breakMin: 10, overload: true },
+  { id: 3, name: "Quá tải", sleep: (t) => Math.min(t, SLEEP_FLOOR), meal: 0.6, ex: 0.3, cook: false, fun: false, breakMin: 5, overload: true },
 ];
 
 export const MEAL_LABEL: Record<string, string> = {
@@ -72,11 +56,6 @@ export interface PlanInput {
   profile: Profile;
   /** Các task (chưa xong) cần xếp trong ngày này. */
   tasks: Task[];
-  premium: boolean;
-  /** Premium: bật "chế độ rất gấp" cho ngày này. */
-  urgent: boolean;
-  /** Premium: cho phép làm task trong giờ học. */
-  studyAtSchool: boolean;
   /** Có được phép quá tải hôm nay không (quy tắc 2 ngày). */
   overloadAllowed: boolean;
   /** Chỉ xếp task sau thời điểm này (dùng cho "hôm nay"). */
@@ -122,7 +101,7 @@ export function sortTasks(tasks: Task[]): Task[] {
 }
 
 /** Xây lịch cho 1 ngày ở 1 mức cân bằng cụ thể. */
-function build(input: PlanInput, level: Level, tasks: Task[], allowSchool: boolean): BuildResult {
+function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
   const { profile, date } = input;
   const wd = weekday(date);
   const wake = toMin(profile.wakeTime);
@@ -137,8 +116,7 @@ function build(input: PlanInput, level: Level, tasks: Task[], allowSchool: boole
     occ.push(b);
     if (b.taskId && !b.missed) lockedTaskMin.set(b.taskId, (lockedTaskMin.get(b.taskId) ?? 0) + (b.end - b.start));
   }
-  // block đã khoá dạng "task tại trường" không chiếm thời gian thực trên timeline
-  const occupying = () => occ.filter((b) => !b.atSchool);
+  const occupying = () => occ;
 
   const isFree = (s: number, e: number, lo = wake, hi = bed) =>
     s >= lo && e <= hi && !occupying().some((b) => overlaps(b, s, e));
@@ -294,18 +272,6 @@ function build(input: PlanInput, level: Level, tasks: Task[], allowSchool: boole
   const chunkCount = new Map<string, number>();
   for (const b of locked) if (b.taskId) chunkCount.set(b.taskId, (chunkCount.get(b.taskId) ?? 0) + 1);
 
-  const schoolSlots: Interval[] = allowSchool && level.school
-    ? todaysCommit
-        .filter((c) => c.kind === "school" && !lockedKeys.has(`schooltask:${c.id}`))
-        .map((c) => {
-          const s = Math.max(toMin(c.start), lo);
-          const e = toMin(c.end);
-          // tối đa 50% thời lượng buổi học
-          return { s, e: Math.min(e, s + Math.floor((toMin(c.end) - toMin(c.start)) / 2)) };
-        })
-        .filter((iv) => iv.e - iv.s >= MIN_CHUNK)
-    : [];
-
   for (const t of sortTasks(tasks)) {
     let remaining = t.estimate - (lockedTaskMin.get(t.id) ?? 0);
     if (remaining <= 0) continue;
@@ -348,26 +314,6 @@ function build(input: PlanInput, level: Level, tasks: Task[], allowSchool: boole
         if (level.breakMin > 0) breaks.push({ s: sl.s + len, e: sl.s + len + level.breakMin });
         sl.s += len + level.breakMin;
       }
-    }
-    // tranh thủ giờ học (Premium)
-    for (const sl of schoolSlots) {
-      if (remaining <= 0) break;
-      const end = Math.min(sl.e, limit);
-      const room = end - sl.s;
-      if (room < Math.min(MIN_CHUNK, remaining)) continue;
-      const len = Math.min(remaining, room);
-      occ.push({
-        key: `task:${t.id}:${sl.s}:school`,
-        cat: "task",
-        title: t.title,
-        start: sl.s,
-        end: sl.s + len,
-        taskId: t.id,
-        atSchool: true,
-        note: "Tranh thủ trong giờ học",
-      });
-      remaining -= len;
-      sl.s += len;
     }
     slots = slots.filter((s) => s.e - s.s >= MIN_CHUNK);
     if (remaining > 0) unplaced.set(t.id, remaining);
@@ -413,12 +359,12 @@ function build(input: PlanInput, level: Level, tasks: Task[], allowSchool: boole
     .reduce((sum, b) => sum + Math.max(0, Math.min(b.end, bed) - Math.max(b.start, wake)), 0);
 
   // gộp các phiên liền nhau của cùng 1 task (nếu tổng vẫn <= MAX_CHUNK)
-  const sorted = [...occ].sort((a, b) => a.start - b.start || (a.atSchool ? 1 : -1));
+  const sorted = [...occ].sort((a, b) => a.start - b.start);
   const merged: Block[] = [];
   for (const b of sorted) {
     const prev = merged[merged.length - 1];
     if (
-      prev && b.taskId && prev.taskId === b.taskId && !prev.atSchool && !b.atSchool &&
+      prev && b.taskId && prev.taskId === b.taskId &&
       prev.end === b.start && b.end - prev.start <= MAX_CHUNK &&
       !lockedKeys.has(prev.key) && !lockedKeys.has(b.key)
     ) {
@@ -445,35 +391,21 @@ const totalUnplaced = (r: BuildResult) => [...r.unplaced.values()].reduce((a, b)
 
 /** Xếp lịch cho 1 ngày: chọn mức cân bằng thấp nhất đủ chỗ cho mọi task. */
 export function planDay(input: PlanInput): DayPlan {
-  const { profile, date, premium } = input;
-  const wd = weekday(date);
-  const hasSchool = profile.commitments.some((c) => c.kind === "school" && c.days.includes(wd));
-  const allowSchool = premium && input.studyAtSchool && hasSchool;
-  const urgentOn = premium && input.urgent;
-
-  const candidates = LEVELS.filter(
-    (l) =>
-      (l.id !== 2 || allowSchool) &&
-      (!l.overload || input.overloadAllowed) &&
-      (!l.urgent || urgentOn),
-  );
+  const { profile, date } = input;
+  const candidates = LEVELS.filter((l) => !l.overload || input.overloadAllowed);
 
   const lockedTaskIds = new Set((input.locked ?? []).filter((b) => b.taskId && !b.missed).map((b) => b.taskId!));
   let active = [...input.tasks];
 
-  // Mức "rất gấp" (ngủ < 6 tiếng) chỉ dùng cho task đến hạn NGAY HÔM NAY:
-  // task còn hạn sẽ được dời sang ngày sau trước khi phải hy sinh giấc ngủ.
-  const normal = candidates.filter((l) => !l.urgent);
-  const urgentLv = candidates.filter((l) => l.urgent);
-  const tryFit = (set: Task[], levels: Level[]) => {
-    for (const lv of levels) {
-      const r = build(input, lv, set, allowSchool);
+  const tryFit = (set: Task[]) => {
+    for (const lv of candidates) {
+      const r = build(input, lv, set);
       if (totalUnplaced(r) === 0) return { r, lv };
     }
     return null;
   };
 
-  let fit = tryFit(active, normal);
+  let fit = tryFit(active);
   const moved: Task[] = [];
   if (!fit) {
     // Quá tải thật sự: dời các task CHƯA đến hạn sang ngày khác
@@ -488,12 +420,11 @@ export function planDay(input: PlanInput): DayPlan {
       const t = movable.shift()!;
       active = active.filter((x) => x.id !== t.id);
       moved.push(t);
-      fit = tryFit(active, normal);
+      fit = tryFit(active);
     }
   }
-  if (!fit && urgentLv.length) fit = tryFit(active, urgentLv);
   const lv = fit?.lv ?? candidates[candidates.length - 1];
-  const r = fit?.r ?? build(input, lv, active, allowSchool);
+  const r = fit?.r ?? build(input, lv, active);
 
   const unfit = [...r.unplaced.entries()].map(([taskId, missing]) => ({
     taskId,
@@ -505,12 +436,12 @@ export function planDay(input: PlanInput): DayPlan {
 
   // ---------------- Cảnh báo ----------------
   const warnings: PlanWarning[] = [];
-  if (r.sleepMin < SLEEP_FLOOR) {
+  if (r.sleepMin <= SLEEP_FLOOR && r.sleepMin < profile.sleepTarget) {
     warnings.push({
       kind: "danger",
-      title: `Cảnh báo: bạn chỉ ngủ ${fmtHours(r.sleepMin)} đêm nay`,
+      title: `Cảnh báo thiếu ngủ: đêm nay chỉ còn ${fmtHours(r.sleepMin)}`,
       detail:
-        "Ngủ dưới 6 tiếng làm giảm trí nhớ và khả năng tập trung. Chỉ nên dùng khi thật sự gấp, và hãy ngủ bù vào ngày mai.",
+        "Giấc ngủ đã giảm xuống mức tối thiểu và Smart Life sẽ không cắt thêm nữa. Ngủ dưới 6 tiếng làm giảm trí nhớ và khả năng tập trung – hãy ngủ bù vào ngày mai.",
     });
   }
   if (lv.overload) {
@@ -523,14 +454,11 @@ export function planDay(input: PlanInput): DayPlan {
       title: "Hôm nay bạn đang quá tải",
       detail: `Smart Life đã ${parts.join(", ") || "cân bằng lại lịch"} để kịp deadline. Ngày mai và ngày kia lịch sẽ không được phép quá tải nữa.`,
     });
-  } else if (lv.id >= 1 && (r.cookDropped || r.funDropped || lv.id === 2)) {
+  } else if (lv.id >= 1 && (r.cookDropped || r.funDropped)) {
     warnings.push({
       kind: "info",
       title: "Lịch đã được cân bằng",
-      detail:
-        lv.id === 2
-          ? "Một phần task được xếp tranh thủ trong giờ học để bạn vẫn giữ đủ giờ ngủ và ăn."
-          : "Hôm nay khá nhiều việc nên Smart Life tạm bỏ bớt hoạt động tuỳ chọn (nấu ăn, giải trí) để giữ đủ giờ ngủ và ăn.",
+      detail: "Hôm nay khá nhiều việc nên Smart Life tạm bỏ bớt hoạt động tuỳ chọn (nấu ăn, giải trí) để giữ đủ giờ ngủ và ăn.",
     });
   }
   if (overloadBlocked) {
@@ -551,30 +479,16 @@ export function planDay(input: PlanInput): DayPlan {
     warnings.push({
       kind: "danger",
       title: `Không đủ thời gian cho "${u.title}" (thiếu ${fmtDuration(u.missing)})`,
-      detail: urgentOn
-        ? "Kể cả ở chế độ rất gấp. Hãy giảm thời gian dự tính, chia nhỏ task hoặc xin gia hạn."
-        : premium
-          ? "Bạn có thể bật Chế độ rất gấp, giảm thời gian dự tính hoặc xin gia hạn."
-          : "Hãy giảm thời gian dự tính, xin gia hạn, hoặc nâng cấp Premium để dùng Chế độ rất gấp.",
+      detail: "Hãy giảm thời gian dự tính, chia nhỏ task, bỏ bớt việc khác hoặc xin gia hạn.",
     });
   }
   warnings.push(...r.notes);
-
-  const suggestions: Suggestion[] = buildSuggestions({
-    date,
-    cookDropped: r.cookDropped,
-    exShortened: r.exShortened,
-    funDropped: r.funDropped,
-    sleepCut: r.sleepMin < profile.sleepTarget,
-    exerciseKind: profile.exercise.kind,
-  });
 
   return {
     date,
     level: lv.id,
     levelName: lv.name,
     overload: lv.overload,
-    urgent: lv.urgent,
     sleepMin: r.sleepMin,
     wake: r.wake,
     bed: r.bed,
@@ -583,7 +497,6 @@ export function planDay(input: PlanInput): DayPlan {
     unfit,
     overloadBlocked,
     warnings,
-    suggestions,
     freeMin: r.freeMin,
   };
 }
@@ -603,9 +516,6 @@ export const overloadAllowedOn = (date: string, lastOverload: string | null) =>
 export interface RangeContext {
   profile: Profile;
   tasks: Task[];
-  premium: boolean;
-  studyAtSchool: boolean;
-  urgentDates: string[];
   logs: Record<string, DayLog>;
   today: string;
   peak?: { start: number; end: number } | null;
@@ -639,9 +549,6 @@ export function planRange(ctx: RangeContext, days: number): DayPlan[] {
         date,
         profile: ctx.profile,
         tasks: dayTasks,
-        premium: ctx.premium,
-        urgent: ctx.urgentDates.includes(date),
-        studyAtSchool: ctx.studyAtSchool,
         overloadAllowed: overloadAllowedOn(date, lastOverload),
         peak: ctx.peak,
       });

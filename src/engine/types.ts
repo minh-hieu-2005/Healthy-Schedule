@@ -78,8 +78,6 @@ export interface Block {
   note?: string;
   /** Hoạt động đã bị rút ngắn so với bình thường */
   shortened?: boolean;
-  /** Task được làm tranh thủ trong giờ học (Premium) */
-  atSchool?: boolean;
   /** Phiên task đã qua giờ mà chưa tick — task được xếp lại phần còn thiếu */
   missed?: boolean;
 }
@@ -92,19 +90,11 @@ export interface PlanWarning {
   detail?: string;
 }
 
-export interface Suggestion {
-  id: string;
-  forCat: Category;
-  title: string;
-  options: string[];
-}
-
 export interface DayPlan {
   date: string;
   level: number;
   levelName: string;
   overload: boolean;
-  urgent: boolean;
   sleepMin: number;
   wake: number;
   bed: number;
@@ -113,7 +103,6 @@ export interface DayPlan {
   unfit: { taskId: string; title: string; missing: number }[];
   overloadBlocked: boolean;
   warnings: PlanWarning[];
-  suggestions: Suggestion[];
   freeMin: number;
   /** chữ ký dữ liệu đầu vào — đổi thì cần xếp lại lịch */
   sig?: string;

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, Link } from "react-router-dom";
-import { BarChart3, CalendarCheck2, Crown, ListTodo, Settings as SettingsIcon } from "lucide-react";
+import { BarChart3, CalendarCheck2, ListTodo, Loader2, Settings as SettingsIcon } from "lucide-react";
 import { computeTodayPlan, todaySig, useStore } from "./store/useStore";
 import { summarize } from "./engine/predict";
 import { todayStr } from "./engine/time";
@@ -8,9 +8,12 @@ import Landing from "./pages/Landing";
 import Onboarding from "./pages/Onboarding";
 import Today from "./pages/Today";
 import Tasks from "./pages/Tasks";
-import Premium from "./pages/Premium";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
 import Logo from "./components/Logo";
+import UserMenu from "./components/UserMenu";
+import ReminderCenter from "./components/ReminderCenter";
+import { useSession } from "./cloud/session";
 
 // Trang thống kê dùng thư viện biểu đồ khá nặng -> chỉ tải khi mở trang
 const Stats = lazy(() => import("./pages/Stats"));
@@ -19,14 +22,13 @@ const NAV = [
   { to: "/hom-nay", label: "Hôm nay", icon: CalendarCheck2 },
   { to: "/task", label: "Task", icon: ListTodo },
   { to: "/thong-ke", label: "Thống kê", icon: BarChart3 },
-  { to: "/premium", label: "Premium", icon: Crown },
   { to: "/cai-dat", label: "Cài đặt", icon: SettingsIcon },
 ];
 
 /** Giữ lịch hôm nay và nhật ký luôn khớp với dữ liệu mới nhất. */
 function usePlanSync() {
   const state = useStore();
-  const { profile, tasks, premium, studyAtSchool, urgentDates, logs, plans, checks } = state;
+  const { profile, tasks, logs, plans, checks } = state;
   const today = todayStr();
 
   useEffect(() => {
@@ -34,7 +36,7 @@ function usePlanSync() {
     const s = useStore.getState();
     const stored = s.plans[today];
     if (!stored || stored.sig !== todaySig(s, today)) s.savePlan(computeTodayPlan(s, today));
-  }, [profile, tasks, premium, studyAtSchool, urgentDates, logs, today]);
+  }, [profile, tasks, logs, today]);
 
   useEffect(() => {
     const plan = plans[today];
@@ -46,7 +48,6 @@ function usePlanSync() {
 }
 
 function AppShell({ children }: { children: ReactNode }) {
-  const premium = useStore((s) => s.premium);
   return (
     <div className="min-h-dvh pb-24 md:pb-10">
       <header className="sticky top-0 z-40 bg-bg/85 backdrop-blur border-b border-line">
@@ -70,15 +71,7 @@ function AppShell({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          {premium ? (
-            <span className="chip bg-lime text-ink">
-              <Crown size={14} /> Premium
-            </span>
-          ) : (
-            <Link to="/premium" className="btn btn-lime text-sm py-2 px-3.5">
-              <Crown size={15} /> Nâng cấp
-            </Link>
-          )}
+          <UserMenu />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 pt-5 md:pt-8">{children}</main>
@@ -86,7 +79,7 @@ function AppShell({ children }: { children: ReactNode }) {
         className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]"
         aria-label="Điều hướng chính"
       >
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-4">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
@@ -109,14 +102,39 @@ function AppShell({ children }: { children: ReactNode }) {
           ))}
         </div>
       </nav>
+      <ReminderCenter />
     </div>
   );
 }
 
+export function Splash({ text = "Đang tải dữ liệu của bạn…" }: { text?: string }) {
+  return (
+    <div className="min-h-dvh flex flex-col items-center justify-center gap-4 blob-bg">
+      <Logo />
+      <p className="flex items-center gap-2 text-ink-2" role="status">
+        <Loader2 size={18} className="animate-spin" /> {text}
+      </p>
+    </div>
+  );
+}
+
+/** Chỉ cho vào khi đã đăng nhập và dữ liệu của tài khoản đã nạp xong. */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { status, ready } = useSession();
+  const loc = useLocation();
+  if (status === "loading" || (status === "signedIn" && !ready)) return <Splash />;
+  if (status === "signedOut")
+    return <Navigate to={`/dang-nhap?next=${encodeURIComponent(loc.pathname)}`} replace />;
+  return <>{children}</>;
+}
+
 function RequireProfile({ children }: { children: ReactNode }) {
   const profile = useStore((s) => s.profile);
-  if (!profile) return <Navigate to="/" replace />;
-  return <AppShell>{children}</AppShell>;
+  return (
+    <RequireAuth>
+      {profile ? <AppShell>{children}</AppShell> : <Navigate to="/bat-dau" replace />}
+    </RequireAuth>
+  );
 }
 
 export default function App() {
@@ -130,7 +148,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/bat-dau" element={<Onboarding />} />
+      <Route path="/dang-nhap" element={<Login />} />
+      <Route path="/bat-dau" element={<RequireAuth><Onboarding /></RequireAuth>} />
       <Route path="/hom-nay" element={<RequireProfile><Today /></RequireProfile>} />
       <Route path="/task" element={<RequireProfile><Tasks /></RequireProfile>} />
       <Route
@@ -143,7 +162,6 @@ export default function App() {
           </RequireProfile>
         }
       />
-      <Route path="/premium" element={<RequireProfile><Premium /></RequireProfile>} />
       <Route path="/cai-dat" element={<RequireProfile><Settings /></RequireProfile>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
