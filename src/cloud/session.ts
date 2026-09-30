@@ -10,6 +10,7 @@
 // ("smart-life:guest"). Khi đăng nhập Gmail, dữ liệu dùng thử được chuyển vào tài khoản.
 import { create } from "zustand";
 import { backend, friendlyError, type AuthUser, type CloudDoc } from "./index";
+import type { RedirectResult } from "./googleRedirect";
 import { DATA_KEYS, pickData, useStore, type AppState, type UserData } from "../store/useStore";
 
 export type SyncState = "idle" | "saving" | "saved" | "offline" | "error" | "local";
@@ -21,6 +22,10 @@ interface SessionState {
   ready: boolean;
   sync: SyncState;
   error?: string;
+  /** đang hoàn tất đăng nhập sau khi Google chuyển về */
+  finishing?: boolean;
+  /** lỗi đăng nhập (hiện ở trang Đăng nhập) */
+  authError?: string;
 }
 
 export const useSession = create<SessionState>()(() => ({
@@ -226,10 +231,31 @@ function importLegacy(u: AuthUser): boolean {
   }
 }
 
-/** Gọi 1 lần khi ứng dụng khởi động. */
-export function startSession() {
+/** Gọi 1 lần khi ứng dụng khởi động. `redirect`: kết quả Google trả về (nếu vừa đăng nhập bằng chuyển trang). */
+export function startSession(redirect?: RedirectResult | null) {
   if (started) return;
   started = true;
+  if (redirect && "idToken" in redirect && backend.finishRedirect) {
+    useSession.setState({ finishing: true, authError: undefined });
+    backend
+      .finishRedirect(redirect.idToken)
+      .catch((e) => {
+        try {
+          localStorage.removeItem(MERGE);
+        } catch {
+          /* bỏ qua */
+        }
+        useSession.setState({ authError: friendlyError(e) });
+      })
+      .finally(() => useSession.setState({ finishing: false }));
+  } else if (redirect && "error" in redirect) {
+    try {
+      localStorage.removeItem(MERGE);
+    } catch {
+      /* bỏ qua */
+    }
+    useSession.setState({ authError: friendlyError(new Error(redirect.error)) });
+  }
   backend.onAuth((u) => {
     const cur = useSession.getState().user;
     if (u && cur?.uid === u.uid && useSession.getState().status === "signedIn") return;
@@ -292,13 +318,22 @@ export function exitGuest() {
   useSession.setState({ status: "signedOut", user: null, ready: false, sync: "idle" });
 }
 
-export async function signIn() {
+/** Điện thoại, máy tính bảng, app đã cài: đăng nhập bằng chuyển trang (cửa sổ bật lên hay bị chặn / treo). */
+export function preferRedirect() {
+  const standalone =
+    window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+  return standalone || !!window.matchMedia?.("(pointer: coarse)").matches;
+}
+
+export async function signIn(opts?: { redirect?: boolean }) {
+  useSession.setState({ authError: undefined });
   if (useSession.getState().status === "guest") {
-    if (saveTimer) await pushNow();
+    if (saveTimer) void pushNow(); // chế độ dùng thử: lưu ngay (đồng bộ), không chờ để khỏi mất "lượt bấm"
     safeSet(MERGE, "1");
   }
+  const redirect = !!backend.canRedirect && (opts?.redirect ?? preferRedirect());
   try {
-    await backend.signInWithGoogle();
+    await backend.signInWithGoogle({ redirect });
   } catch (e) {
     try {
       localStorage.removeItem(MERGE);

@@ -1,3 +1,4 @@
+import { newOAuthState, redirectUri } from "./googleRedirect";
 // Backend GIẢ LẬP — chỉ dùng cho kiểm thử tự động (VITE_AUTH_MODE=mock).
 // "Đám mây" được mô phỏng bằng localStorage với khoá riêng, và "đăng nhập Google"
 // là một hộp chọn email. Không bao giờ được đưa vào bản chạy thật.
@@ -24,9 +25,23 @@ export function createMockBackend(): Backend {
       setTimeout(() => cb(current()), 50);
       return () => listeners.delete(cb);
     },
-    async signInWithGoogle() {
+    canRedirect: true,
+    async signInWithGoogle(opts) {
       const email = window.prompt("[Mock] Nhập Gmail để đăng nhập", "ban.a@gmail.com");
       if (!email) throw Object.assign(new Error("closed"), { code: "auth/popup-closed-by-user" });
+      if (opts?.redirect) {
+        // giả lập: "Google" chuyển về trang với #id_token=...&state=...
+        const { state } = newOAuthState();
+        window.location.assign(`${redirectUri()}#id_token=${encodeURIComponent("mock." + email)}&state=${state}`);
+        window.location.reload();
+        return new Promise<void>(() => {});
+      }
+      const uid = "mock_" + email.replace(/[^a-z0-9]/gi, "_");
+      localStorage.setItem(SESSION, JSON.stringify({ uid, email, name: email.split("@")[0] }));
+      emit();
+    },
+    async finishRedirect(idToken) {
+      const email = idToken.replace(/^mock\./, "");
       const uid = "mock_" + email.replace(/[^a-z0-9]/gi, "_");
       localStorage.setItem(SESSION, JSON.stringify({ uid, email, name: email.split("@")[0] }));
       emit();

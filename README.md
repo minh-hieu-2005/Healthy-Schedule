@@ -114,6 +114,11 @@ Cấu hình Firebase nằm trong [`src/firebase.config.ts`](src/firebase.config.
 2. **Authentication → Sign-in method → Google → Enable**.
 3. **Authentication → Settings → Authorized domains**: thêm `<tên-tài-khoản>.github.io`.
 4. **Firestore Database → Create database** (Production mode), rồi dán Rules ở trên vào tab **Rules** → **Publish**.
+5. **Đăng nhập trên điện thoại / iPad / app đã cài**: trên các thiết bị này Smart Life đăng nhập bằng cách chuyển thẳng tới Google rồi quay về
+   (trình duyệt điện thoại chặn cách dùng cửa sổ bật lên qua firebaseapp.com). Cần:
+   - Chép **Web client ID** (Authentication → Sign-in method → Google → Web SDK configuration) vào `googleWebClientId` trong `src/firebase.config.ts`.
+   - Mở [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials), chọn **Web client (auto created by Google Service)**, thêm
+     **Authorized JavaScript origins**: `https://<tên-tài-khoản>.github.io` và **Authorized redirect URIs**: `https://<tên-tài-khoản>.github.io/<tên-repo>/` → **Save**.
 
 ## Công nghệ
 

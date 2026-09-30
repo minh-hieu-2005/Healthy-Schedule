@@ -12,3 +12,10 @@ export const firebaseConfig = {
   messagingSenderId: "609462508397",
   appId: "1:609462508397:web:22876e1ff9ace7c2f39864",
 };
+
+// OAuth Web client ID của project (Firebase Console → Authentication → Sign-in method → Google
+// → Web SDK configuration). Dùng cho cách đăng nhập "chuyển trang" trên điện thoại / iPad / app đã cài.
+// Cần thêm vào Google Cloud Console → APIs & Services → Credentials → Web client:
+//   Authorized JavaScript origins: https://minh-hieu-2005.github.io
+//   Authorized redirect URIs:      https://minh-hieu-2005.github.io/Healthy-Schedule/
+export const googleWebClientId = "609462508397-7ktn5c0cjkgmkp0uagp79v14vkvvgo03.apps.googleusercontent.com";

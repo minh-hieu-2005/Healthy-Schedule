@@ -10,12 +10,14 @@ import "./index.css";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { startSession } from "./cloud/session";
+import { takeGoogleRedirect } from "./cloud/googleRedirect";
 import { registerServiceWorker } from "./lib/notify";
 import { listenInstallPrompt } from "./store/ui";
 import { unlockAudioOnFirstGesture } from "./lib/sound";
 
 // Bắt đầu theo dõi đăng nhập và đăng ký service worker (thông báo hệ thống)
-startSession();
+// Google vừa chuyển về sau khi chọn tài khoản? (đọc trước khi bộ định tuyến xử lý địa chỉ)
+startSession(takeGoogleRedirect());
 void registerServiceWorker();
 listenInstallPrompt();
 unlockAudioOnFirstGesture();

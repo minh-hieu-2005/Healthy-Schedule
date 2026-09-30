@@ -1,18 +1,9 @@
 // Backend thật: Firebase Authentication (Google) + Cloud Firestore.
 import { initializeApp } from "firebase/app";
-import {
-  GoogleAuthProvider,
-  browserLocalPersistence,
-  getAuth,
-  getRedirectResult,
-  onAuthStateChanged,
-  setPersistence,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut as fbSignOut,
-} from "firebase/auth";
+import { GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithCredential, signInWithPopup, signOut as fbSignOut } from "firebase/auth";
 import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { firebaseConfig } from "../firebase.config";
+import { firebaseConfig, googleWebClientId } from "../firebase.config";
+import { startGoogleRedirect } from "./googleRedirect";
 import type { Backend, CloudDoc } from "./types";
 
 export function createFirebaseBackend(): Backend {
@@ -39,8 +30,6 @@ export function createFirebaseBackend(): Backend {
   const db = getFirestore(app);
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  // hoàn tất đăng nhập kiểu chuyển trang (dùng khi cửa sổ bật lên bị chặn, vd. trong ứng dụng đã cài trên iPhone)
-  void getRedirectResult(auth).catch(() => {});
 
   return {
     configured: true,
@@ -58,25 +47,27 @@ export function createFirebaseBackend(): Backend {
         ),
       );
     },
-    async signInWithGoogle() {
-      await setPersistence(auth, browserLocalPersistence);
+    canRedirect: !!googleWebClientId,
+    async signInWithGoogle(opts) {
+      if (opts?.redirect && googleWebClientId) {
+        startGoogleRedirect(googleWebClientId);
+        return new Promise<void>(() => {}); // trang sẽ chuyển sang Google
+      }
+      // Lưu ý: gọi signInWithPopup NGAY (không await gì trước đó), nếu không Safari/Chrome
+      // điện thoại coi là không phải do người dùng bấm và chặn cửa sổ đăng nhập.
       try {
         await signInWithPopup(auth, provider);
       } catch (e) {
         const code = (e as { code?: string })?.code ?? "";
-        const standalone =
-          window.matchMedia?.("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
-        // cửa sổ bật lên bị chặn / không hỗ trợ -> chuyển sang đăng nhập bằng cách chuyển trang
-        if (
-          code.includes("popup-blocked") ||
-          code.includes("operation-not-supported") ||
-          (standalone && (code.includes("internal-error") || code.includes("web-storage-unsupported")))
-        ) {
-          await signInWithRedirect(auth, provider);
-          return;
+        if (googleWebClientId && (code.includes("popup-blocked") || code.includes("operation-not-supported") || code.includes("web-storage-unsupported"))) {
+          startGoogleRedirect(googleWebClientId);
+          return new Promise<void>(() => {});
         }
         throw e;
       }
+    },
+    async finishRedirect(idToken) {
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
     },
     async signOut() {
       await fbSignOut(auth);

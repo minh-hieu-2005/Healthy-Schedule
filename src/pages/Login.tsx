@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CloudCheck, Loader2, LockKeyhole, LogIn, ShieldCheck, Sparkles } from "lucide-react";
 import Logo from "../components/Logo";
-import { backendConfigured, signIn, startGuest, useSession } from "../cloud/session";
+import { backendConfigured, preferRedirect, signIn, startGuest, useSession } from "../cloud/session";
 import { friendlyError } from "../cloud";
 import { useStore } from "../store/useStore";
 
@@ -11,7 +11,7 @@ export default function Login() {
   const [params] = useSearchParams();
   const next = params.get("next") || "/hom-nay";
   const demo = params.get("demo") === "1";
-  const { status, ready, user } = useSession();
+  const { status, ready, user, finishing, authError } = useSession();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const done = useRef(false);
@@ -43,19 +43,25 @@ export default function Login() {
   };
   const isGuest = status === "guest";
 
-  const login = async () => {
+  const [slow, setSlow] = useState(false);
+  const login = async (redirect?: boolean) => {
     setErr("");
     setBusy(true);
+    setSlow(false);
+    // cửa sổ Google lâu không phản hồi -> gợi ý cách đăng nhập chuyển trang
+    const t = window.setTimeout(() => setSlow(true), 8000);
     try {
-      await signIn();
+      await signIn(redirect ? { redirect: true } : undefined);
     } catch (e) {
       setErr(friendlyError(e));
     } finally {
+      window.clearTimeout(t);
       setBusy(false);
     }
   };
 
-  const waiting = busy || (status === "signedIn" && !ready) || status === "loading";
+  const waiting = busy || !!finishing || (status === "signedIn" && !ready) || status === "loading";
+  const shownErr = err || authError || "";
 
 
   return (
@@ -83,15 +89,19 @@ export default function Login() {
           ) : (
             <button
               className="btn w-full mt-6 py-3.5 text-base bg-inverse text-on-inverse hover:opacity-90 shadow-lg"
-              onClick={login}
+              onClick={() => void login()}
               disabled={waiting}
             >
               {waiting ? <Loader2 size={20} className="animate-spin" /> : <LogIn size={20} />}
               {status === "signedIn" && !ready
                 ? `Đang tải dữ liệu của ${user?.email ?? "bạn"}…`
-                : busy
-                  ? "Đang mở cửa sổ Google…"
-                  : "Tiếp tục với Google"}
+                : finishing
+                  ? "Đang đăng nhập…"
+                  : busy
+                    ? preferRedirect()
+                      ? "Đang chuyển tới Google…"
+                      : "Đang mở cửa sổ Google…"
+                    : "Tiếp tục với Google"}
             </button>
           )}
 
@@ -107,9 +117,18 @@ export default function Login() {
             </>
           )}
 
-          {err && (
+          {busy && slow && !preferRedirect() && (
+            <p className="mt-3 text-sm text-ink-2 bg-sunken rounded-xl p-3">
+              Không thấy cửa sổ Google?{" "}
+              <button className="font-semibold text-brand underline" onClick={() => void login(true)}>
+                Đăng nhập bằng cách chuyển trang
+              </button>
+            </p>
+          )}
+
+          {shownErr && (
             <p className="mt-3 text-sm text-danger bg-danger-soft rounded-xl p-3" role="alert">
-              {err}
+              {shownErr}
             </p>
           )}
 
