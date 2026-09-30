@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, Link } from "react-router-dom";
-import { BarChart3, CalendarCheck2, ListTodo, Loader2, Settings as SettingsIcon } from "lucide-react";
+import { BarChart3, CalendarCheck2, HardDrive, ListTodo, Loader2, LogIn, Settings as SettingsIcon } from "lucide-react";
 import { computeTodayPlan, todaySig, useStore } from "./store/useStore";
 import { summarize } from "./engine/predict";
 import { todayStr } from "./engine/time";
@@ -12,7 +12,8 @@ import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Logo from "./components/Logo";
 import UserMenu from "./components/UserMenu";
-import ReminderCenter from "./components/ReminderCenter";
+import { BellButton, ReminderToast, useReminderTicker } from "./components/ReminderCenter";
+import FocusTimer from "./components/FocusTimer";
 import { useSession } from "./cloud/session";
 
 // Trang thống kê dùng thư viện biểu đồ khá nặng -> chỉ tải khi mở trang
@@ -28,7 +29,7 @@ const NAV = [
 /** Giữ lịch hôm nay và nhật ký luôn khớp với dữ liệu mới nhất. */
 function usePlanSync() {
   const state = useStore();
-  const { profile, tasks, logs, plans, checks } = state;
+  const { profile, tasks, logs, plans, checks, overrides, partial } = state;
   const today = todayStr();
 
   useEffect(() => {
@@ -36,20 +37,61 @@ function usePlanSync() {
     const s = useStore.getState();
     const stored = s.plans[today];
     if (!stored || stored.sig !== todaySig(s, today)) s.savePlan(computeTodayPlan(s, today));
-  }, [profile, tasks, logs, today]);
+  }, [profile, tasks, logs, overrides, today]);
 
   useEffect(() => {
     const plan = plans[today];
     if (!plan) return;
-    const log = summarize(plan, new Set(checks[today] ?? []), tasks);
+    const log = summarize(plan, new Set(checks[today] ?? []), tasks, partial[today]);
     const s = useStore.getState();
     if (JSON.stringify(s.logs[today]) !== JSON.stringify(log)) s.saveLog(log);
-  }, [plans, checks, tasks, today]);
+  }, [plans, checks, tasks, partial, today]);
+}
+
+/** Áp dụng giao diện sáng / tối (lưu cả trên máy để không bị nháy khi mở web). */
+function useTheme() {
+  const theme = useStore((s) => s.prefs.theme);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const dark = theme === "dark" || (theme === "system" && mq.matches);
+      document.documentElement.classList.toggle("dark", dark);
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#110e1f" : "#6C47FF");
+    };
+    apply();
+    try {
+      localStorage.setItem("smart-life:theme", theme);
+    } catch {
+      /* bỏ qua */
+    }
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [theme]);
+}
+
+function GuestBanner() {
+  const guest = useSession((s) => s.status === "guest");
+  if (!guest) return null;
+  return (
+    <div className="bg-lime text-on-lime">
+      <div className="mx-auto max-w-6xl px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <HardDrive size={16} className="shrink-0" />
+        <span className="flex-1 min-w-[12rem]">
+          <b>Bạn đang dùng thử.</b> Dữ liệu chỉ lưu trên máy này.
+        </span>
+        <Link to="/dang-nhap" className="focus-ring inline-flex items-center gap-1.5 rounded-full bg-on-lime text-white px-3 py-1 font-semibold">
+          <LogIn size={14} /> Đăng nhập Gmail để lưu
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 function AppShell({ children }: { children: ReactNode }) {
+  useReminderTicker();
   return (
     <div className="min-h-dvh pb-24 md:pb-10">
+      <GuestBanner />
       <header className="sticky top-0 z-40 bg-bg/85 backdrop-blur border-b border-line">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between gap-4">
           <Link to="/" className="focus-ring rounded-xl" aria-label="Smart Life – trang giới thiệu">
@@ -62,7 +104,7 @@ function AppShell({ children }: { children: ReactNode }) {
                 to={n.to}
                 className={({ isActive }) =>
                   `focus-ring flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                    isActive ? "bg-ink text-white" : "text-ink-2 hover:bg-brand-soft"
+                    isActive ? "bg-inverse text-on-inverse" : "text-ink-2 hover:bg-brand-soft"
                   }`
                 }
               >
@@ -71,12 +113,15 @@ function AppShell({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          <UserMenu />
+          <div className="flex items-center gap-1.5">
+            <BellButton />
+            <UserMenu />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 pt-5 md:pt-8">{children}</main>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]"
         aria-label="Điều hướng chính"
       >
         <div className="grid grid-cols-4">
@@ -102,7 +147,8 @@ function AppShell({ children }: { children: ReactNode }) {
           ))}
         </div>
       </nav>
-      <ReminderCenter />
+      <ReminderToast />
+      <FocusTimer />
     </div>
   );
 }
@@ -122,7 +168,7 @@ export function Splash({ text = "Đang tải dữ liệu của bạn…" }: { te
 function RequireAuth({ children }: { children: ReactNode }) {
   const { status, ready } = useSession();
   const loc = useLocation();
-  if (status === "loading" || (status === "signedIn" && !ready)) return <Splash />;
+  if (status === "loading" || ((status === "signedIn" || status === "guest") && !ready)) return <Splash />;
   if (status === "signedOut")
     return <Navigate to={`/dang-nhap?next=${encodeURIComponent(loc.pathname)}`} replace />;
   return <>{children}</>;
@@ -139,6 +185,7 @@ function RequireProfile({ children }: { children: ReactNode }) {
 
 export default function App() {
   usePlanSync();
+  useTheme();
   const { pathname } = useLocation();
   // Lưu ý: dùng dấu ngoặc {} để effect KHÔNG trả về giá trị. Ở Chrome bản mới,
   // window.scrollTo() trả về Promise; nếu trả về từ effect, React sẽ lỗi khi chuyển trang.

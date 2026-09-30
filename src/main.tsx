@@ -11,10 +11,12 @@ import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { startSession } from "./cloud/session";
 import { registerServiceWorker } from "./lib/notify";
+import { listenInstallPrompt } from "./store/ui";
 
 // Bắt đầu theo dõi đăng nhập và đăng ký service worker (thông báo hệ thống)
 startSession();
 void registerServiceWorker();
+listenInstallPrompt();
 
 // HashRouter: các đường dẫn dạng /#/hom-nay nên tải lại trang
 // trên GitHub Pages không bị lỗi 404.

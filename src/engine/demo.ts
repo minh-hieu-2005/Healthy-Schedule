@@ -67,7 +67,15 @@ export function demoTasks(today: string): Task[] {
     t("Đọc chương 4 giáo trình Marketing", 60, 1, "normal", "Tóm tắt 1 trang để thảo luận trên lớp."),
     t("Làm slide thuyết trình Kinh tế vĩ mô", 90, 2, "high", "10 slide, chủ đề lạm phát 2025–2026."),
     t("Ôn thi giữa kỳ Nguyên lý kế toán", 150, 3, "normal", "Làm lại đề năm trước + ôn bút toán.", "23:59", { planDate: addDays(today, 1) }),
-    t("Viết báo cáo thực tập (bản nháp)", 120, 6, "low", "Phần giới thiệu doanh nghiệp và mô tả công việc.", "23:59", { planDate: addDays(today, 1) }),
+    t("Viết báo cáo thực tập (bản nháp)", 120, 6, "low", "Phần giới thiệu doanh nghiệp và mô tả công việc.", "23:59", {
+      planDate: addDays(today, 1),
+      subtasks: [
+        { id: uid(), title: "Giới thiệu doanh nghiệp", done: true },
+        { id: uid(), title: "Mô tả công việc đã làm", done: false },
+        { id: uid(), title: "Bài học rút ra", done: false },
+      ],
+    }),
+    t("Ghi nhật ký học tập tuần", 30, 4, "normal", "Tổng kết những gì đã học trong tuần.", "21:00", { repeat: "weekly", planDate: addDays(today, 4) }),
     t("Nộp form đăng ký CLB tiếng Anh", 15, 0, "low", "Điền form online.", "20:00", {
       done: true,
       doneDate: today,
@@ -136,3 +144,78 @@ export function demoLogs(today: string): Record<string, DayLog> {
   }
   return logs;
 }
+
+/** Dữ liệu mẫu bổ sung: giờ ngủ thực tế và số cốc nước 2 tuần gần đây. */
+export function demoExtras(today: string) {
+  const r = rng(99);
+  const sleepActual: Record<string, { bed: number; wake: number }> = {};
+  const water: Record<string, number> = {};
+  for (let i = 14; i >= 0; i--) {
+    const d = addDays(today, -i);
+    // phần lớn các đêm ngủ 22:30–23:30, thỉnh thoảng thức khuya
+    const late = r() < 0.2;
+    const bed = late ? 60 + Math.round(r() * 3) * 15 : 1350 + Math.round(r() * 4) * 15;
+    sleepActual[d] = { bed: bed % 1440, wake: 390 + Math.round(r() * 2) * 10 };
+    if (i > 0) water[d] = 4 + Math.round(r() * 5);
+  }
+  water[today] = 2;
+  return { sleepActual, water };
+}
+
+export interface ProfileTemplate {
+  id: string;
+  emoji: string;
+  title: string;
+  desc: string;
+  make: () => Profile;
+}
+
+/** Mẫu hồ sơ chọn 1 chạm khi bắt đầu. */
+export const TEMPLATES: ProfileTemplate[] = [
+  {
+    id: "student-am",
+    emoji: "🎒",
+    title: "Sinh viên học buổi sáng",
+    desc: "Học 7:30–11:30 từ T2–T6, gym tối T2/T4/T6",
+    make: () => ({
+      ...defaultProfile(),
+      commitments: [{ id: uid(), label: "Học trên trường", kind: "school", days: [1, 2, 3, 4, 5], start: "07:30", end: "11:30" }],
+    }),
+  },
+  {
+    id: "student-pm",
+    emoji: "☕",
+    title: "Học buổi chiều + làm thêm",
+    desc: "Học 13:00–17:00 T2–T6, làm thêm sáng T7 & CN",
+    make: () => ({
+      ...defaultProfile(),
+      wakeTime: "07:00",
+      meals: defaultProfile().meals.map((m) => (m.id === "breakfast" ? { ...m, time: "07:30" } : m.id === "lunch" ? { ...m, time: "11:45" } : m)),
+      exercise: { enabled: true, kind: "Chạy bộ", time: "06:30", duration: 30, days: [2, 4, 6] },
+      commitments: [
+        { id: uid(), label: "Học trên trường", kind: "school", days: [1, 2, 3, 4, 5], start: "13:00", end: "17:00" },
+        { id: uid(), label: "Làm thêm", kind: "work", days: [0, 6], start: "08:00", end: "12:00" },
+      ],
+    }),
+  },
+  {
+    id: "office",
+    emoji: "💼",
+    title: "Người đi làm giờ hành chính",
+    desc: "Làm 8:00–17:00 T2–T6, tập gym 18:00 T3/T5",
+    make: () => ({
+      ...defaultProfile(),
+      commute: { enabled: true, minutes: 30 },
+      exercise: { enabled: true, kind: "Gym", time: "18:00", duration: 60, days: [2, 4] },
+      meals: defaultProfile().meals.map((m) => (m.id === "dinner" ? { ...m, time: "19:30" } : m)),
+      commitments: [{ id: uid(), label: "Đi làm", kind: "work", days: [1, 2, 3, 4, 5], start: "08:00", end: "17:00" }],
+    }),
+  },
+  {
+    id: "custom",
+    emoji: "✏️",
+    title: "Tự thiết lập",
+    desc: "Bắt đầu từ lịch trống, tự nhập giờ học / làm",
+    make: () => defaultProfile(),
+  },
+];

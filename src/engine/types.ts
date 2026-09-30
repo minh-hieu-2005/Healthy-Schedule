@@ -54,6 +54,14 @@ export interface Profile {
   fun: { enabled: boolean; label: string; time: string; minutes: number };
 }
 
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export type Repeat = "none" | "daily" | "weekly";
+
 export interface Task {
   id: string;
   title: string;
@@ -66,6 +74,21 @@ export interface Task {
   done: boolean;
   doneDate?: string;
   createdAt: number;
+  /** Lặp lại: khi hoàn thành sẽ tự tạo lần tiếp theo */
+  repeat?: Repeat;
+  /** id của lần lặp tiếp theo đã được tạo (để gỡ nếu bỏ đánh dấu xong) */
+  nextId?: string;
+  subtasks?: Subtask[];
+}
+
+/** Điều chỉnh riêng cho 1 ngày (không đổi hồ sơ gốc). */
+export interface DayOverride {
+  /** key các hoạt động bỏ qua hôm nay: "meal:lunch", "exercise", "fun", "cook:dinner", "commit:<id>" */
+  skip?: string[];
+  /** đổi giờ bắt đầu hôm nay cho hoạt động cố định: key -> phút */
+  move?: Record<string, number>;
+  /** ghim task vào giờ cụ thể hôm nay: taskId -> phút */
+  pin?: Record<string, number>;
 }
 
 export interface Block {
@@ -80,6 +103,8 @@ export interface Block {
   shortened?: boolean;
   /** Phiên task đã qua giờ mà chưa tick — task được xếp lại phần còn thiếu */
   missed?: boolean;
+  /** Người dùng đã đổi giờ / ghim vào giờ này */
+  userSet?: boolean;
 }
 
 export type WarningKind = "danger" | "warning" | "info" | "success";

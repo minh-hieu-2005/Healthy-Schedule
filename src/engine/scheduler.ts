@@ -15,7 +15,7 @@
 // ngày hôm sau (task có hạn xa nhất / ưu tiên thấp nhất bị dời trước).
 // =====================================================================
 
-import type { Block, DayLog, DayPlan, PlanWarning, Profile, Task } from "./types";
+import type { Block, DayLog, DayOverride, DayPlan, PlanWarning, Profile, Task } from "./types";
 import { addDays, diffDays, fmtDuration, fmtHours, round5, toMin, weekday } from "./time";
 
 /** Khoảng cách tối thiểu (ngày) giữa 2 lần quá tải. */
@@ -64,6 +64,8 @@ export interface PlanInput {
   locked?: Block[];
   /** Khung giờ năng suất dự đoán (giờ bắt đầu, giờ kết thúc). */
   peak?: { start: number; end: number } | null;
+  /** Điều chỉnh của người dùng cho riêng ngày này */
+  override?: DayOverride;
 }
 
 interface Interval {
@@ -132,9 +134,13 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
   const add = (b: Block) => {
     if (!lockedKeys.has(b.key)) occ.push(b);
   };
+  const ov = input.override ?? {};
+  const skip = new Set(ov.skip ?? []);
+  const moveTo = (key: string) => ov.move?.[key];
 
   // 1) Lịch cố định: học / làm + di chuyển
-  const todaysCommit = profile.commitments.filter((c) => c.days.includes(wd));
+  // "Bỏ qua hôm nay" (vd nghỉ học) -> không xếp buổi đó và cả di chuyển
+  const todaysCommit = profile.commitments.filter((c) => c.days.includes(wd) && !skip.has(`commit:${c.id}`));
   for (const c of todaysCommit) {
     const s = toMin(c.start);
     const e = toMin(c.end);
@@ -156,9 +162,9 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
       const place = c.kind === "school" ? "trường" : "chỗ làm";
       const kin = `commute:${c.id}:in`;
       const kout = `commute:${c.id}:out`;
-      if (!lockedKeys.has(kin) && !occupying().some((b) => overlaps(b, s - m, s)))
+      if (!lockedKeys.has(kin) && !skip.has(kin) && !occupying().some((b) => overlaps(b, s - m, s)))
         add({ key: kin, cat: "commute", title: `Di chuyển đến ${place}`, start: s - m, end: s });
-      if (!lockedKeys.has(kout) && !occupying().some((b) => overlaps(b, e, e + m)))
+      if (!lockedKeys.has(kout) && !skip.has(kout) && !occupying().some((b) => overlaps(b, e, e + m)))
         add({ key: kout, cat: "commute", title: "Di chuyển về", start: e, end: e + m });
     }
   }
@@ -169,19 +175,22 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
   for (const meal of profile.meals) {
     if (!meal.enabled) continue;
     const mKey = `meal:${meal.id}`;
-    if (lockedKeys.has(mKey)) continue;
+    if (lockedKeys.has(mKey) || skip.has(mKey)) continue;
     const dur = Math.max(15, round5(meal.duration * level.meal));
     const shortened = dur < meal.duration;
     if (shortened) mealShortened = true;
-    const wantCook = profile.cooking.enabled && profile.cooking.minutes > 0 && meal.cook;
+    const wantCook =
+      profile.cooking.enabled && profile.cooking.minutes > 0 && meal.cook && !skip.has(`cook:${meal.id}`);
     const cookMin = wantCook && level.cook ? profile.cooking.minutes : 0;
     if (wantCook && !level.cook) cookDropped = true;
-    let start = findSlot(toMin(meal.time) - cookMin, cookMin + dur);
+    const movedTo = moveTo(mKey);
+    const pref = movedTo ?? toMin(meal.time);
+    let start = findSlot(pref - cookMin, cookMin + dur, movedTo !== undefined ? 90 : 240);
     let cook = cookMin;
     if (start === null && cookMin > 0) {
       cookDropped = true;
       cook = 0;
-      start = findSlot(toMin(meal.time), dur);
+      start = findSlot(pref, dur);
     }
     if (start === null) {
       notes.push({ kind: "warning", title: `Không tìm được giờ trống cho ${MEAL_LABEL[meal.id].toLowerCase()}` });
@@ -197,16 +206,18 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
       end: start + cook + dur,
       shortened,
       note: shortened ? `Rút gọn còn ${dur} phút` : undefined,
+      userSet: movedTo !== undefined,
     });
   }
 
   // 3) Tập luyện
   let exShortened = false;
   const ex = profile.exercise;
-  if (ex.enabled && ex.days.includes(wd) && !lockedKeys.has("exercise")) {
+  if (ex.enabled && ex.days.includes(wd) && !lockedKeys.has("exercise") && !skip.has("exercise")) {
     const dur = Math.max(15, round5(ex.duration * level.ex));
     exShortened = dur < ex.duration;
-    const start = findSlot(toMin(ex.time), dur, 300);
+    const exMoved = moveTo("exercise");
+    const start = findSlot(exMoved ?? toMin(ex.time), dur, exMoved !== undefined ? 120 : 300);
     if (start !== null) {
       add({
         key: "exercise",
@@ -216,6 +227,7 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
         end: start + dur,
         shortened: exShortened,
         note: exShortened ? `Thay cho ${ex.kind.toLowerCase()} ${ex.duration} phút` : undefined,
+        userSet: exMoved !== undefined,
       });
     } else {
       notes.push({ kind: "warning", title: "Không còn chỗ trống để tập luyện hôm nay" });
@@ -224,11 +236,14 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
 
   // 4) Giải trí (được giữ chỗ ở mức bình thường)
   const fun = profile.fun;
+  const funOn = fun.enabled && fun.minutes > 0 && !skip.has("fun");
+  const funMoved = moveTo("fun");
   let funPlaced = lockedKeys.has("fun");
-  if (fun.enabled && fun.minutes > 0 && level.fun && !funPlaced) {
-    const start = findSlot(toMin(fun.time), fun.minutes, 180);
+  // giờ giải trí người dùng tự đặt được giữ cả khi lịch đang cân bằng
+  if (funOn && (level.fun || (funMoved !== undefined && !level.overload)) && !funPlaced) {
+    const start = findSlot(funMoved ?? toMin(fun.time), fun.minutes, funMoved !== undefined ? 90 : 180);
     if (start !== null) {
-      add({ key: "fun", cat: "fun", title: fun.label || "Giải trí", start, end: start + fun.minutes });
+      add({ key: "fun", cat: "fun", title: fun.label || "Giải trí", start, end: start + fun.minutes, userSet: funMoved !== undefined });
       funPlaced = true;
     }
   }
@@ -272,8 +287,33 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
   const chunkCount = new Map<string, number>();
   for (const b of locked) if (b.taskId) chunkCount.set(b.taskId, (chunkCount.get(b.taskId) ?? 0) + 1);
 
+  // Task được ghim giờ ("Làm ngay" / "Đổi giờ"): xếp trước, bắt đầu tại giờ đã chọn
+  const pinnedDone = new Map<string, number>();
   for (const t of sortTasks(tasks)) {
-    let remaining = t.estimate - (lockedTaskMin.get(t.id) ?? 0);
+    const pinAt = ov.pin?.[t.id];
+    if (pinAt === undefined) continue;
+    const remaining = t.estimate - (lockedTaskMin.get(t.id) ?? 0);
+    if (remaining <= 0) continue;
+    const s0 = Math.max(pinAt, lo);
+    // khoảng trống đầu tiên chứa (hoặc sau) giờ đã ghim
+    const sl = slots
+      .filter((x) => x.e > s0 && Math.min(x.e, bed) - Math.max(x.s, s0) >= Math.min(MIN_CHUNK, remaining))
+      .sort((a, b) => a.s - b.s)[0];
+    if (!sl) continue;
+    const st = Math.max(sl.s, s0);
+    const len = Math.min(remaining, MAX_CHUNK, sl.e - st);
+    occ.push({ key: `task:${t.id}:${st}`, cat: "task", title: t.title, start: st, end: st + len, taskId: t.id, userSet: true });
+    pinnedDone.set(t.id, len);
+    // chia lại khoảng trống quanh phiên vừa ghim
+    const idx = slots.indexOf(sl);
+    const parts: Interval[] = [];
+    if (st - sl.s >= MIN_CHUNK) parts.push({ s: sl.s, e: st, peak: sl.peak });
+    if (sl.e - (st + len + level.breakMin) >= MIN_CHUNK) parts.push({ s: st + len + level.breakMin, e: sl.e, peak: sl.peak });
+    slots.splice(idx, 1, ...parts);
+  }
+
+  for (const t of sortTasks(tasks)) {
+    let remaining = t.estimate - (lockedTaskMin.get(t.id) ?? 0) - (pinnedDone.get(t.id) ?? 0);
     if (remaining <= 0) continue;
     const limit = t.deadlineDate === date ? Math.min(bed, toMin(t.deadlineTime)) : bed;
     const want = Math.min(remaining, MAX_CHUNK);
@@ -321,7 +361,7 @@ function build(input: PlanInput, level: Level, tasks: Task[]): BuildResult {
 
   // 6) Giải trí sau khi đã xếp task (mức cân bằng: nếu còn thời gian)
   let funDropped = false;
-  if (fun.enabled && fun.minutes > 0 && !funPlaced) {
+  if (funOn && !funPlaced) {
     if (!level.overload) {
       const gaps = freeIntervals()
         .filter((g) => g.e - g.s >= 30)
@@ -410,7 +450,7 @@ export function planDay(input: PlanInput): DayPlan {
   if (!fit) {
     // Quá tải thật sự: dời các task CHƯA đến hạn sang ngày khác
     const movable = active
-      .filter((t) => t.deadlineDate > date && !lockedTaskIds.has(t.id))
+      .filter((t) => t.deadlineDate > date && !lockedTaskIds.has(t.id) && input.override?.pin?.[t.id] === undefined)
       .sort((a, b) => {
         const k = taskSortKey(b).localeCompare(taskSortKey(a)); // hạn xa nhất trước
         if (k !== 0) return k;
@@ -519,6 +559,8 @@ export interface RangeContext {
   logs: Record<string, DayLog>;
   today: string;
   peak?: { start: number; end: number } | null;
+  /** Điều chỉnh theo từng ngày */
+  overrides?: Record<string, DayOverride>;
   /** Lịch hôm nay đã được lưu (giữ nguyên các block đã hoàn thành). */
   todayPlan?: DayPlan | null;
 }
@@ -551,6 +593,7 @@ export function planRange(ctx: RangeContext, days: number): DayPlan[] {
         tasks: dayTasks,
         overloadAllowed: overloadAllowedOn(date, lastOverload),
         peak: ctx.peak,
+        override: ctx.overrides?.[date],
       });
     }
     if (plan.overload) lastOverload = date;

@@ -3,6 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Smart Life" />
+    <script>
+      // áp dụng giao diện tối ngay khi tải trang (tránh nháy trắng)
+      try {
+        var t = localStorage.getItem("smart-life:theme") || "system";
+        if (t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches))
+          document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#6C47FF" />
     <meta name="description" content="Smart Life – tự động xếp thời gian biểu lành mạnh: ngủ đủ, ăn đúng giờ, vận động đều mà vẫn kịp deadline." />

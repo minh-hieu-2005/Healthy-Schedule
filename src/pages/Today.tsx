@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
-  BellRing,
   BrainCircuit,
-  Droplets,
   Check,
+  ChevronDown,
+  Eye,
+  EyeOff,
   Info,
   Plus,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
 } from "lucide-react";
 import { computeTodayPlan, peakFor, useStore } from "../store/useStore";
@@ -22,41 +24,48 @@ import {
   fmtDuration,
   fmtHours,
   fmtTime,
-  nowMin,
   relDayLabel,
   todayStr,
   WEEKDAY_SHORT,
   weekday,
 } from "../engine/time";
+import { sleepMinutes } from "../engine/motivation";
 import { CAT, LEVEL_META, PRIORITY_META } from "../lib/categories";
-import { Modal, ProgressRing, SectionTitle } from "../components/ui";
+import { ProgressRing, SectionTitle } from "../components/ui";
 import TaskForm from "../components/TaskForm";
-import { notifyPermission, requestNotifyPermission, systemNotify } from "../lib/notify";
+import QuickAdd from "../components/QuickAdd";
+import NowNext, { useNowMin } from "../components/today/NowNext";
+import BlockSheet from "../components/today/BlockSheet";
+import { SleepCheckIn, WaterTracker } from "../components/today/Health";
+import { Celebration, GettingStarted, StreakChip, WeeklyRecapCard } from "../components/today/Motivation";
+
+const SKIP_LABEL = (key: string, plan: DayPlan | undefined, fallback: Record<string, string>) =>
+  plan?.blocks.find((b) => b.key === key)?.title ?? fallback[key] ?? key;
 
 export default function Today() {
   const s = useStore();
   const today = todayStr();
+  const loc = useLocation();
   const [date, setDate] = useState(today);
   const [adding, setAdding] = useState(false);
   const [detail, setDetail] = useState<Block | null>(null);
+  const quickRef = useRef<HTMLDivElement>(null);
+
+  // mở trang từ thông báo "Xem lịch" -> luôn về hôm nay
+  useEffect(() => {
+    setDate(todayStr());
+  }, [loc.key]);
 
   const peak = useMemo(() => peakFor(s.logs, today), [s.logs, today]);
   const range = useMemo(
     () =>
       s.profile
         ? planRange(
-            {
-              profile: s.profile,
-              tasks: s.tasks,
-              logs: s.logs,
-              today,
-              peak,
-              todayPlan: s.plans[today],
-            },
+            { profile: s.profile, tasks: s.tasks, logs: s.logs, today, peak, overrides: s.overrides, todayPlan: s.plans[today] },
             7,
           )
         : [],
-    [s.profile, s.tasks, s.logs, s.plans, today, peak],
+    [s.profile, s.tasks, s.logs, s.plans, s.overrides, today, peak],
   );
   const offset = diffDays(today, date);
   const plan: DayPlan | undefined = offset >= 0 ? range[offset] : s.plans[date];
@@ -80,9 +89,18 @@ export default function Today() {
   const days = Array.from({ length: 10 }, (_, i) => addDays(today, i - 3));
   const lastOv = lastOverloadBefore(s.logs, today);
 
+  // xong hết task của hôm nay -> chúc mừng
+  const todayPlan = s.plans[today];
+  const todayTaskBlocks = (todayPlan?.blocks ?? []).filter((b) => b.cat === "task" && !b.missed);
+  const todayChecked = new Set(s.checks[today] ?? []);
+  const allTasksDone =
+    todayTaskBlocks.length > 0 &&
+    todayTaskBlocks.every((b) => todayChecked.has(b.key) || !!taskMap.get(b.taskId!)?.done) &&
+    (todayPlan?.unfit.length ?? 0) === 0;
+
   if (!plan) {
     return (
-      <div>
+      <div className="space-y-5">
         <DayStrip days={days} date={date} setDate={setDate} today={today} plans={s.plans} />
         <div className="card p-8 text-center text-ink-2">Không có dữ liệu lịch cho ngày {fmtDateShort(date)}.</div>
       </div>
@@ -95,28 +113,39 @@ export default function Today() {
   const lv = LEVEL_META[plan.level];
   const hour = new Date().getHours();
   const hello = hour < 11 ? "Chào buổi sáng" : hour < 14 ? "Chào buổi trưa" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
+  const isToday = date === today;
+  const lastNight = s.sleepActual[date];
+  const showSleepCheck = isToday && !lastNight && hour < 14;
+  const addTask = () => {
+    if (window.matchMedia("(min-width: 640px)").matches) setAdding(true);
+    else {
+      quickRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      quickRef.current?.querySelector("input")?.focus();
+    }
+  };
 
   return (
     <div className="space-y-5">
       <DayStrip days={days} date={date} setDate={setDate} today={today} plans={s.plans} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
-        <div className="space-y-5 min-w-0">
+        <div className="space-y-4 min-w-0">
           {/* Tổng quan ngày */}
           <section className="card p-5 md:p-6 blob-bg">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-ink-3">
-                  {date === today ? `${hello}${s.profile?.name ? `, ${s.profile.name}` : ""} 👋` : relDayLabel(date, today)}
+                  {isToday ? `${hello}${s.profile?.name ? `, ${s.profile.name}` : ""} 👋` : relDayLabel(date, today)}
                 </p>
                 <h1 className="text-2xl md:text-3xl font-extrabold mt-0.5">
-                  {date === today ? "Lịch hôm nay" : `Lịch ${relDayLabel(date, today).toLowerCase()}`}
+                  {isToday ? "Lịch hôm nay" : `Lịch ${relDayLabel(date, today).toLowerCase()}`}
                   <span className="text-ink-3 font-bold text-lg md:text-xl"> · {fmtDateShort(date)}</span>
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className={`chip ${lv.cls}`}>
                     {lv.emoji} {plan.levelName}
                   </span>
+                  {isToday && <StreakChip />}
                   <span className="text-sm text-ink-2">{lv.desc}</span>
                 </div>
               </div>
@@ -124,16 +153,25 @@ export default function Today() {
             </div>
 
             <dl className="mt-5 grid grid-cols-3 gap-2 md:gap-3">
-              <Stat label="Giấc ngủ" value={fmtHours(plan.sleepMin)} sub={`${fmtTime(plan.bed)} → ${fmtTime(plan.wake)}`} danger={plan.sleepMin < 360} />
+              <Stat
+                label="Giấc ngủ"
+                value={fmtHours(plan.sleepMin)}
+                sub={
+                  isToday && lastNight
+                    ? `Đêm qua: ${fmtHours(sleepMinutes(lastNight))}`
+                    : `${fmtTime(plan.bed)} → ${fmtTime(plan.wake)}`
+                }
+                danger={plan.sleepMin <= 360 && plan.sleepMin < (s.profile?.sleepTarget ?? 480)}
+              />
               <Stat label="Làm task" value={fmtDuration(taskMin)} sub={`${plan.blocks.filter((b) => b.cat === "task").length} phiên`} />
               <Stat label="Thời gian trống" value={fmtDuration(plan.freeMin)} sub={`${doneCount}/${total} đã xong`} />
             </dl>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <button className="btn btn-primary" onClick={() => setAdding(true)}>
+              <button className="btn btn-primary" onClick={addTask}>
                 <Plus size={18} /> Thêm task
               </button>
-              {date === today && (
+              {isToday && (
                 <button
                   className="btn btn-ghost"
                   onClick={() => {
@@ -142,17 +180,19 @@ export default function Today() {
                   }}
                   title="Xếp lại phần còn lại của ngày, giữ nguyên những gì đã xong"
                 >
-                  <RefreshCw size={17} /> Xếp lại lịch
+                  <RefreshCw size={17} /> Xếp lại phần còn lại
                 </button>
-              )}
-              {date === today && s.reminders.water && (
-                <span className="flex items-center gap-2 rounded-full bg-white border border-line px-3.5 py-2 text-sm font-semibold">
-                  <Droplets size={16} className="text-[#1683b8]" />
-                  Đã uống nước {s.water[today] ?? 0}/{s.reminders.waterTimes.length} lần nhắc
-                </span>
               )}
             </div>
           </section>
+
+          <div ref={quickRef}>
+            <QuickAdd />
+          </div>
+
+          {isToday && <NowNext plan={plan} isDone={isDone} onToggle={toggle} onOpen={setDetail} taskMap={taskMap} />}
+          {showSleepCheck && <SleepCheckIn date={date} />}
+          {isToday && <WeeklyRecapCard />}
 
           {plan.warnings.length > 0 && (
             <section className="space-y-2.5" aria-label="Cảnh báo và thông báo">
@@ -162,25 +202,23 @@ export default function Today() {
             </section>
           )}
 
-          {date === today && <NotifyBanner />}
-
-          {/* Thời gian biểu */}
-          <section className="card p-4 md:p-5">
-            <SectionTitle>Thời gian biểu</SectionTitle>
-            <Timeline
-              plan={plan}
-              isToday={date === today}
-              canCheck={canCheck}
-              isDone={isDone}
-              onToggle={toggle}
-              onOpen={setDetail}
-              taskMap={taskMap}
-            />
-          </section>
+          <Timeline
+            plan={plan}
+            date={date}
+            isToday={isToday}
+            canCheck={canCheck}
+            isDone={isDone}
+            onToggle={toggle}
+            onOpen={setDetail}
+            taskMap={taskMap}
+            onAdd={addTask}
+          />
         </div>
 
         {/* Cột phải */}
-        <aside className="space-y-5">
+        <aside className="space-y-4">
+          <GettingStarted onAddTask={addTask} />
+          {isToday && <WaterTracker date={today} />}
           <PredictionCard pred={tomorrowPred} />
           <UpcomingCard tasks={s.tasks} today={today} range={range} />
           <section className="card p-5">
@@ -188,27 +226,30 @@ export default function Today() {
               <ShieldAlert size={18} className="text-brand" /> Quy tắc bảo vệ sức khoẻ
             </h2>
             <ul className="mt-3 space-y-2 text-sm text-ink-2">
+              <li>• Luôn giữ tối thiểu 6 tiếng ngủ mỗi đêm.</li>
               <li>• Mỗi {OVERLOAD_GAP_DAYS} ngày chỉ được quá tải 1 lần.</li>
               <li>
                 • Lần quá tải gần nhất:{" "}
-                <b className="text-ink">{lastOv ? (diffDays(lastOv, today) <= 1 ? `${relDayLabel(lastOv, today)} (${fmtDateShort(lastOv)})` : relDayLabel(lastOv, today)) : "chưa có"}</b>
+                <b className="text-ink">
+                  {lastOv ? (diffDays(lastOv, today) <= 1 ? `${relDayLabel(lastOv, today)} (${fmtDateShort(lastOv)})` : relDayLabel(lastOv, today)) : "chưa có"}
+                </b>
               </li>
               <li>
                 • Hôm nay:{" "}
                 {overloadAllowedOn(today, lastOv) ? (
-                  <b className="text-[#0f7a55]">được phép quá tải nếu cần</b>
+                  <b className="text-ok">được phép quá tải nếu cần</b>
                 ) : (
-                  <b className="text-[#b8431a]">không được quá tải</b>
+                  <b className="text-hot">không được quá tải</b>
                 )}
               </li>
-              <li>• Bản miễn phí luôn giữ tối thiểu 6 tiếng ngủ.</li>
             </ul>
           </section>
         </aside>
       </div>
 
       <TaskForm open={adding} onClose={() => setAdding(false)} defaultDate={date} />
-      <BlockDetail block={detail} onClose={() => setDetail(null)} date={date} taskMap={taskMap} />
+      <BlockSheet block={detail} date={date} onClose={() => setDetail(null)} />
+      <Celebration allDone={allTasksDone} />
     </div>
   );
 }
@@ -241,10 +282,10 @@ function DayStrip({
             onClick={() => setDate(d)}
             className={`focus-ring shrink-0 w-[3.6rem] rounded-2xl py-2 text-center transition-colors border ${
               active
-                ? "bg-ink text-white border-ink"
+                ? "bg-inverse text-on-inverse border-inverse"
                 : d === today
-                  ? "bg-lime border-lime text-ink"
-                  : "bg-white border-line text-ink-2 hover:bg-brand-soft"
+                  ? "bg-lime border-lime text-on-lime"
+                  : "bg-card border-line text-ink-2 hover:bg-brand-soft"
             } ${disabled ? "opacity-35" : ""}`}
           >
             <span className="block text-[11px] font-semibold opacity-80">{d === today ? "Nay" : WEEKDAY_SHORT[weekday(d)]}</span>
@@ -258,25 +299,25 @@ function DayStrip({
 
 function Stat({ label, value, sub, danger }: { label: string; value: string; sub: string; danger?: boolean }) {
   return (
-    <div className={`rounded-2xl p-3 ${danger ? "bg-[#ffe1e1]" : "bg-white/80 border border-line"}`}>
+    <div className={`rounded-2xl p-3 ${danger ? "bg-danger-soft" : "bg-card/80 border border-line"}`}>
       <dt className="text-xs font-semibold text-ink-3">{label}</dt>
-      <dd className={`text-base md:text-xl font-extrabold ${danger ? "text-[#b3261e]" : ""}`}>{value}</dd>
+      <dd className={`text-base md:text-xl font-extrabold ${danger ? "text-danger" : ""}`}>{value}</dd>
       <dd className="text-[11px] md:text-xs text-ink-3">{sub}</dd>
     </div>
   );
 }
 
 const WARN_STYLE = {
-  danger: { cls: "bg-[#ffe9e7] border-[#f7c3bd]", icon: AlertTriangle, ic: "text-[#b3261e]" },
-  warning: { cls: "bg-[#fff4e5] border-[#f6d7a8]", icon: AlertTriangle, ic: "text-[#b86e00]" },
-  info: { cls: "bg-[#eef3ff] border-[#cddbfb]", icon: Info, ic: "text-[#2a5cc9]" },
-  success: { cls: "bg-[#e5f7ef] border-[#b7e6d0]", icon: Check, ic: "text-[#0f7a55]" },
+  danger: { cls: "bg-danger-soft border-danger-line", icon: AlertTriangle, ic: "text-danger" },
+  warning: { cls: "bg-amber-soft border-amber-line", icon: AlertTriangle, ic: "text-amber" },
+  info: { cls: "bg-info-soft border-info-line", icon: Info, ic: "text-info" },
+  success: { cls: "bg-ok-soft border-ok-line", icon: Check, ic: "text-ok" },
 };
 
 function WarningCard({ w }: { w: PlanWarning }) {
   const st = WARN_STYLE[w.kind];
   return (
-    <div className={`rounded-2xl border p-4 flex gap-3 pop-in ${st.cls}`} role={w.kind === "danger" ? "alert" : "status"}>
+    <div className={`rounded-2xl border p-4 flex gap-3 ${st.cls}`} role={w.kind === "danger" ? "alert" : "status"}>
       <st.icon size={20} className={`shrink-0 mt-0.5 ${st.ic}`} />
       <div className="min-w-0">
         <p className="font-semibold text-sm md:text-base">{w.title}</p>
@@ -286,29 +327,65 @@ function WarningCard({ w }: { w: PlanWarning }) {
   );
 }
 
+const NO_SKIP: string[] = [];
+
+const DEFAULT_NAMES: Record<string, string> = {
+  "meal:breakfast": "Bữa sáng",
+  "meal:lunch": "Bữa trưa",
+  "meal:dinner": "Bữa tối",
+  exercise: "Tập luyện",
+  fun: "Giải trí",
+};
+
 function Timeline({
   plan,
+  date,
   isToday,
   canCheck,
   isDone,
   onToggle,
   onOpen,
   taskMap,
+  onAdd,
 }: {
   plan: DayPlan;
+  date: string;
   isToday: boolean;
   canCheck: boolean;
   isDone: (b: Block) => boolean;
   onToggle: (b: Block) => void;
   onOpen: (b: Block) => void;
   taskMap: Map<string, Task>;
+  onAdd: () => void;
 }) {
-  const now = nowMin();
+  const now = useNowMin();
+  const compact = useStore((s) => s.prefs.compact);
+  const setPrefs = useStore((s) => s.setPrefs);
+  // chọn giá trị gốc từ store rồi mới tính toán (tránh tạo mảng/đối tượng mới mỗi lần render)
+  const skipRaw = useStore((s) => s.overrides[date]?.skip);
+  const skip = skipRaw ?? NO_SKIP;
+  const skipBlock = useStore((s) => s.skipBlock);
+  const commitments = useStore((s) => s.profile?.commitments);
+  const exerciseKind = useStore((s) => s.profile?.exercise.kind);
+  const commitNames = useMemo(
+    () => ({
+      ...Object.fromEntries((commitments ?? []).map((c) => [`commit:${c.id}`, c.label])),
+      ...(exerciseKind ? { exercise: exerciseKind } : {}),
+    }),
+    [commitments, exerciseKind],
+  );
+  const [showPast, setShowPast] = useState(false);
+
+  const visible = plan.blocks.filter((b) => !(compact && b.cat === "commute"));
+  const past = isToday ? visible.filter((b) => b.end <= now && b.cat !== "sleep") : [];
+  const rest = isToday ? visible.filter((b) => !(b.end <= now && b.cat !== "sleep")) : visible;
+  const pastDone = past.filter(isDone).length;
+  const noTasks = !plan.blocks.some((b) => b.cat === "task");
+
   const rows: React.ReactNode[] = [];
-  let cursor = plan.wake;
+  let cursor = isToday ? Math.max(plan.wake, past.length ? Math.max(...past.map((b) => b.end)) : plan.wake) : plan.wake;
   let nowShown = !isToday;
-  const blocks = plan.blocks;
-  blocks.forEach((b, i) => {
+  rest.forEach((b, i) => {
     if (b.start - cursor >= 20 && b.cat !== "sleep") {
       if (!nowShown && now < b.start && now >= cursor) {
         rows.push(<NowLine key={`now-${i}`} now={now} />);
@@ -339,7 +416,91 @@ function Timeline({
     );
     cursor = Math.max(cursor, b.end);
   });
-  return <ol className="space-y-1.5">{rows}</ol>;
+
+  return (
+    <section className="card p-4 md:p-5">
+      <SectionTitle
+        action={
+          <button
+            className="focus-ring flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-ink-2 hover:bg-brand-soft"
+            onClick={() => setPrefs({ compact: !compact })}
+            aria-pressed={compact}
+            title="Ẩn các chặng di chuyển cho gọn"
+          >
+            {compact ? <Eye size={14} /> : <EyeOff size={14} />} {compact ? "Hiện di chuyển" : "Gọn hơn"}
+          </button>
+        }
+      >
+        Thời gian biểu
+      </SectionTitle>
+
+      {past.length > 0 && (
+        <div className="mb-2">
+          <button
+            className="focus-ring w-full flex items-center gap-2 rounded-2xl bg-sunken px-3 py-2.5 text-sm font-semibold text-ink-2"
+            onClick={() => setShowPast(!showPast)}
+            aria-expanded={showPast}
+          >
+            <ChevronDown size={16} className={`transition-transform ${showPast ? "rotate-180" : ""}`} />
+            Đã qua · {past.length} hoạt động
+            <span className="ml-auto text-xs font-normal">
+              {pastDone}/{past.length} đã tick
+            </span>
+          </button>
+          {showPast && (
+            <ol className="mt-1.5 space-y-1.5">
+              {past.map((b) => (
+                <BlockRow
+                  key={b.key}
+                  b={b}
+                  done={isDone(b)}
+                  canCheck={canCheck}
+                  onToggle={() => onToggle(b)}
+                  onOpen={() => onOpen(b)}
+                  task={b.taskId ? taskMap.get(b.taskId) : undefined}
+                />
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {noTasks && (
+        <button
+          onClick={onAdd}
+          className="focus-ring mb-3 w-full rounded-2xl border-2 border-dashed border-brand/40 p-4 text-left hover:bg-brand-soft transition-colors"
+        >
+          <span className="font-bold text-brand flex items-center gap-2">
+            <Plus size={18} /> {isToday ? "Hôm nay chưa có task nào" : "Chưa có task cho ngày này"}
+          </span>
+          <span className="block text-sm text-ink-2 mt-0.5">
+            Thêm bài tập, deadline hay việc cần làm – Smart Life sẽ tự tìm giờ trống phù hợp.
+          </span>
+        </button>
+      )}
+
+      <ol className="space-y-1.5">{rows}</ol>
+
+      {skip.length > 0 && (
+        <div className="mt-3 rounded-2xl bg-sunken p-3 text-sm">
+          <p className="font-semibold text-ink-2">Đã bỏ qua {relDayLabel(date, todayStr()).toLowerCase()}:</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {skip.map((k) => (
+              <button
+                key={k}
+                className="focus-ring chip bg-card border border-line text-ink-2 hover:border-brand"
+                onClick={() => skipBlock(date, k, false)}
+                title="Hoàn tác"
+              >
+                {SKIP_LABEL(k, useStore.getState().plans[date], { ...DEFAULT_NAMES, ...commitNames })} <RotateCcw size={12} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-xs text-ink-3">Mẹo: bấm vào một hoạt động để làm ngay, đổi giờ, dời sang mai hoặc bỏ qua.</p>
+    </section>
+  );
 }
 
 function NowLine({ now }: { now: number }) {
@@ -369,6 +530,7 @@ function BlockRow({
 }) {
   const m = CAT[b.cat];
   const len = b.end - b.start;
+  const subs = task?.subtasks ?? [];
   return (
     <li className="flex items-stretch gap-2">
       <div className="w-14 shrink-0 text-right pt-3">
@@ -377,11 +539,11 @@ function BlockRow({
       </div>
       <div
         className={`flex-1 min-w-0 flex items-center gap-3 rounded-2xl p-3 border transition-opacity ${done ? "opacity-60" : ""} ${
-          b.missed ? "border-dashed border-[#e0a899]" : "border-transparent"
+          b.missed ? "border-dashed border-hot-line" : b.userSet ? "border-brand/40" : "border-transparent"
         }`}
         style={{ background: m.tint }}
       >
-        <span className="h-9 w-9 shrink-0 rounded-xl bg-white/80 flex items-center justify-center" style={{ color: m.color }}>
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-card/80 flex items-center justify-center" style={{ color: m.color }}>
           <m.icon size={18} />
         </span>
         <button className="focus-ring flex-1 min-w-0 text-left rounded-lg" onClick={onOpen}>
@@ -394,9 +556,16 @@ function BlockRow({
                 · Hạn {task.deadlineTime} {fmtDateShort(task.deadlineDate)}
               </span>
             )}
-            {b.shortened && b.note && <span className="chip bg-white/80 text-[#b8431a]">{b.note}</span>}
+            {subs.length > 0 && (
+              <span className="chip bg-card/80 text-ink-2">
+                ☑ {subs.filter((x) => x.done).length}/{subs.length}
+              </span>
+            )}
+            {task?.repeat && task.repeat !== "none" && <span title="Task lặp lại">🔁</span>}
+            {b.userSet && <span className="chip bg-card/80 text-brand">📌 Bạn đã chọn giờ</span>}
+            {b.shortened && b.note && <span className="chip bg-card/80 text-hot">{b.note}</span>}
             {!b.shortened && b.note && <span className="text-ink-3">{b.note}</span>}
-            {b.missed && <span className="chip bg-white text-[#b8431a]">Bỏ lỡ – đã xếp lại</span>}
+            {b.missed && <span className="chip bg-card text-hot">Bỏ lỡ – đã xếp lại</span>}
           </span>
         </button>
         {canCheck && !b.missed && (
@@ -405,7 +574,7 @@ function BlockRow({
             aria-pressed={done}
             aria-label={done ? `Bỏ đánh dấu ${b.title}` : `Đánh dấu đã xong ${b.title}`}
             className={`focus-ring h-8 w-8 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
-              done ? "bg-brand border-brand text-white" : "bg-white border-[#c9c3dc] hover:border-brand"
+              done ? "bg-brand border-brand text-white" : "bg-card border-control hover:border-brand"
             }`}
           >
             {done && <Check size={16} strokeWidth={3} />}
@@ -417,34 +586,36 @@ function BlockRow({
 }
 
 function PredictionCard({ pred }: { pred: ReturnType<typeof predict> }) {
+  // chưa đủ dữ liệu -> không chiếm chỗ; thẻ "Bắt đầu với Smart Life" sẽ hướng dẫn
+  if (!pred.enoughData)
+    return (
+      <section className="card p-4 flex items-center gap-3 text-sm">
+        <BrainCircuit size={20} className="text-brand shrink-0" />
+        <p className="text-ink-2">
+          <b className="text-ink">Dự đoán giờ năng suất</b> sẽ mở sau {Math.max(1, 3 - pred.sampleDays)} ngày nữa khi bạn tick checklist task.
+        </p>
+      </section>
+    );
   return (
-    <section className="card p-5 bg-ink text-white border-0">
+    <section className="card p-5 bg-night text-white border-0">
       <h2 className="font-bold flex items-center gap-2">
         <BrainCircuit size={18} className="text-lime" /> Dự đoán cho ngày mai
       </h2>
-      {pred.enoughData ? (
-        <>
-          <p className="mt-3 text-sm text-white/70">Khung giờ năng suất nhất</p>
-          <p className="text-3xl font-extrabold text-lime">
-            {pred.peakStart}:00 – {pred.peakEnd}:00
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-xl bg-white/10 p-2.5">
-              <p className="text-white/60 text-xs">Làm việc tập trung</p>
-              <p className="font-bold">Khoảng {fmtDuration(pred.expectedFocusMin)}</p>
-            </div>
-            <div className="rounded-xl bg-white/10 p-2.5">
-              <p className="text-white/60 text-xs">Tỉ lệ hoàn thành 7 ngày</p>
-              <p className="font-bold">{Math.round(pred.completionRate * 100)}%</p>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-white/70 leading-relaxed">{pred.tip}</p>
-        </>
-      ) : (
-        <p className="mt-3 text-sm text-white/75 leading-relaxed">
-          Cần ít nhất 3 ngày có tick checklist task ({pred.sampleDays}/3). {pred.tip}
-        </p>
-      )}
+      <p className="mt-3 text-sm text-white/70">Khung giờ năng suất nhất</p>
+      <p className="text-3xl font-extrabold text-lime">
+        {pred.peakStart}:00 – {pred.peakEnd}:00
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="rounded-xl bg-white/10 p-2.5">
+          <p className="text-white/60 text-xs">Làm việc tập trung</p>
+          <p className="font-bold">Khoảng {fmtDuration(pred.expectedFocusMin)}</p>
+        </div>
+        <div className="rounded-xl bg-white/10 p-2.5">
+          <p className="text-white/60 text-xs">Tỉ lệ hoàn thành 7 ngày</p>
+          <p className="font-bold">{Math.round(pred.completionRate * 100)}%</p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-white/70 leading-relaxed">{pred.tip}</p>
       <Link to="/thong-ke" className="mt-4 inline-block text-sm font-semibold text-lime hover:underline">
         Xem thống kê chi tiết →
       </Link>
@@ -476,7 +647,7 @@ function UpcomingCard({ tasks, today, range }: { tasks: Task[]; today: string; r
             return (
               <li key={t.id} className="flex items-start gap-3">
                 <span
-                  className={`mt-0.5 chip ${left < 0 ? "bg-[#ffe1e1] text-[#b3261e]" : left === 0 ? "bg-coral-soft text-[#b8431a]" : "bg-brand-soft text-brand-dark"}`}
+                  className={`mt-0.5 chip ${left < 0 ? "bg-danger-soft text-danger" : left === 0 ? "bg-coral-soft text-hot" : "bg-brand-soft text-brand-dark"}`}
                 >
                   {left < 0 ? "Quá hạn" : left === 0 ? "Hôm nay" : `${left} ngày`}
                 </span>
@@ -491,112 +662,6 @@ function UpcomingCard({ tasks, today, range }: { tasks: Task[]; today: string; r
           })}
         </ul>
       )}
-    </section>
-  );
-}
-
-function BlockDetail({
-  block,
-  onClose,
-  date,
-  taskMap,
-}: {
-  block: Block | null;
-  onClose: () => void;
-  date: string;
-  taskMap: Map<string, Task>;
-}) {
-  const s = useStore();
-  const [editing, setEditing] = useState<Task | null>(null);
-  if (editing) return <TaskForm open task={editing} onClose={() => { setEditing(null); onClose(); }} />;
-  if (!block) return null;
-  const m = CAT[block.cat];
-  const task = block.taskId ? taskMap.get(block.taskId) : undefined;
-  return (
-    <Modal open onClose={onClose} title={block.title}>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 rounded-2xl p-3" style={{ background: m.tint }}>
-          <m.icon size={20} style={{ color: m.color }} />
-          <span className="font-semibold">{m.label}</span>
-          <span className="ml-auto text-sm font-semibold">
-            {fmtTime(block.start)} – {fmtTime(block.end)} · {fmtDuration(block.end - block.start)}
-          </span>
-        </div>
-        {task && (
-          <div className="space-y-2 text-sm">
-            {task.description && <p className="text-ink-2 whitespace-pre-line">{task.description}</p>}
-            <p>
-              <b>Hạn nộp:</b> {task.deadlineTime} ngày {fmtDateShort(task.deadlineDate)} · <b>Tổng thời gian:</b> {fmtDuration(task.estimate)}
-            </p>
-            <p>
-              <b>Ưu tiên:</b> {PRIORITY_META[task.priority].label}
-            </p>
-            <div className="flex flex-wrap gap-2 pt-2">
-              {!task.done ? (
-                <button className="btn btn-primary" onClick={() => { s.setTaskDone(task.id, true, date <= todayStr() ? date : todayStr()); onClose(); }}>
-                  <Check size={18} /> Hoàn thành cả task
-                </button>
-              ) : (
-                <button className="btn btn-ghost" onClick={() => { s.setTaskDone(task.id, false); onClose(); }}>
-                  Đánh dấu chưa xong
-                </button>
-              )}
-              <button className="btn btn-ghost" onClick={() => setEditing(task)}>
-                Sửa task
-              </button>
-            </div>
-          </div>
-        )}
-        {!task && <p className="text-sm text-ink-2">Hoạt động cố định trong lịch của bạn. Chỉnh sửa trong phần Cài đặt.</p>}
-      </div>
-    </Modal>
-  );
-}
-
-/** Gợi ý bật thông báo hệ thống (để nhắc cả khi đang ở tab khác). */
-function NotifyBanner() {
-  const [perm, setPerm] = useState(notifyPermission());
-  const [hidden, setHidden] = useState(() => {
-    try {
-      return sessionStorage.getItem("sl-hide-notify") === "1";
-    } catch {
-      return false;
-    }
-  });
-  if (perm !== "default" || hidden) return null;
-  return (
-    <section className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-      <span className="h-10 w-10 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">
-        <BellRing size={20} />
-      </span>
-      <p className="flex-1 text-sm">
-        <b>Bật thông báo</b> để Smart Life nhắc bạn uống nước và báo deadline sắp tới – kể cả khi bạn đang mở tab hay ứng dụng khác.
-      </p>
-      <div className="flex gap-2">
-        <button
-          className="btn btn-ghost text-sm py-2"
-          onClick={() => {
-            setHidden(true);
-            try {
-              sessionStorage.setItem("sl-hide-notify", "1");
-            } catch {
-              /* bỏ qua */
-            }
-          }}
-        >
-          Để sau
-        </button>
-        <button
-          className="btn btn-primary text-sm py-2"
-          onClick={async () => {
-            const p = await requestNotifyPermission();
-            setPerm(p);
-            if (p === "granted") void systemNotify("Smart Life", "Đã bật thông báo! Bạn sẽ được nhắc uống nước và deadline.", "welcome");
-          }}
-        >
-          Bật thông báo
-        </button>
-      </div>
     </section>
   );
 }

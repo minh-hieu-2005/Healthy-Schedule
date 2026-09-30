@@ -88,3 +88,43 @@ describe("nhắc deadline", () => {
     expect(dueReminders(base({ water: false, deadline: false, tasks: [t], now: at("19:30") }))).toHaveLength(0);
   });
 });
+
+describe("nhắc bắt đầu việc, chào sáng, tổng kết tối", () => {
+  const today = {
+    date: "2026-09-30",
+    wake: 390,
+    bed: 1350,
+    blocks: [
+      { key: "task:x:840", title: "Ôn thi", start: 840, end: 930, cat: "task" as const, done: false },
+      { key: "meal:lunch", title: "Bữa trưa", start: 720, end: 760, cat: "meal" as const, done: true },
+    ],
+  };
+  const inp = (hhmm: string, over: Partial<ReminderInput> = {}) =>
+    base({ now: at(hhmm), water: false, deadline: false, start: true, startLead: 5, daily: true, today, ...over });
+  it("nhắc 5 phút trước khi task bắt đầu, không nhắc bữa ăn", () => {
+    expect(dueReminders(inp("13:54")).filter((r) => r.kind === "start")).toHaveLength(0);
+    const r = dueReminders(inp("13:55")).filter((x) => x.kind === "start");
+    expect(r).toHaveLength(1);
+    expect(r[0].title).toContain("5 phút nữa: Ôn thi");
+  });
+  it("task đã tick xong thì không nhắc", () => {
+    const done = { ...today, blocks: [{ ...today.blocks[0], done: true }] };
+    expect(dueReminders(inp("13:57", { today: done })).filter((r) => r.kind === "start")).toHaveLength(0);
+  });
+  it("task vừa tạo / đang tập trung (quiet) thì không nhắc giờ bắt đầu", () => {
+    const quiet = { ...today, blocks: [{ ...today.blocks[0], quiet: true }] };
+    expect(dueReminders(inp("13:57", { today: quiet })).filter((r) => r.kind === "start")).toHaveLength(0);
+  });
+  it("chào buổi sáng sau giờ thức dậy, tổng kết 45 phút trước giờ ngủ", () => {
+    expect(dueReminders(inp("06:35")).map((r) => r.kind)).toContain("morning");
+    expect(dueReminders(inp("21:50")).map((r) => r.kind)).toContain("evening");
+    expect(dueReminders(inp("21:30")).map((r) => r.kind)).not.toContain("evening");
+  });
+  it("vừa tạo task có hạn sau 2 tiếng thì không nhắc ngay; tới mốc 1 tiếng mới nhắc", () => {
+    const created = at("18:00").getTime();
+    const t = { ...task("n", "2026-09-30", "20:00"), createdAt: created };
+    expect(dueReminders(base({ water: false, tasks: [t], now: at("18:01") }))).toHaveLength(0);
+    const r = dueReminders(base({ water: false, tasks: [t], now: at("19:00") }));
+    expect(r.map((x) => x.id)).toEqual(["dl:n:1"]);
+  });
+});

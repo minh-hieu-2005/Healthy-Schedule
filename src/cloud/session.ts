@@ -5,14 +5,17 @@
 //  - bản sao trên máy: localStorage "smart-life:u:{uid}" (mở nhanh, dùng được khi mất mạng)
 // Hai người dùng chung một máy vẫn không thấy dữ liệu của nhau vì khoá khác nhau
 // và dữ liệu trên màn hình bị xoá ngay khi đăng xuất.
+//
+// Chế độ DÙNG THỬ (không cần tài khoản): dữ liệu chỉ lưu trên máy
+// ("smart-life:guest"). Khi đăng nhập Gmail, dữ liệu dùng thử được chuyển vào tài khoản.
 import { create } from "zustand";
 import { backend, friendlyError, type AuthUser, type CloudDoc } from "./index";
 import { DATA_KEYS, pickData, useStore, type AppState, type UserData } from "../store/useStore";
 
-export type SyncState = "idle" | "saving" | "saved" | "offline" | "error";
+export type SyncState = "idle" | "saving" | "saved" | "offline" | "error" | "local";
 
 interface SessionState {
-  status: "loading" | "signedOut" | "signedIn";
+  status: "loading" | "signedOut" | "signedIn" | "guest";
   user: AuthUser | null;
   /** dữ liệu của tài khoản đã được nạp xong */
   ready: boolean;
@@ -29,6 +32,10 @@ export const useSession = create<SessionState>()(() => ({
 
 const LOCAL = (uid: string) => `smart-life:u:${uid}`;
 const LEGACY = "smart-life-v1"; // dữ liệu của phiên bản cũ (chưa có tài khoản)
+const GUEST = "smart-life:guest";
+const MODE = "smart-life:mode";
+const MERGE = "smart-life:merge-guest";
+const GUEST_USER: AuthUser = { uid: "guest", email: "", name: "Bạn" };
 
 let unsubStore: (() => void) | null = null;
 let unsubRemote: (() => void) | null = null;
@@ -89,6 +96,11 @@ async function pushNow() {
     saveTimer = null;
   }
   const doc: CloudDoc = { data: JSON.stringify(pickData(useStore.getState())), updatedAt: Date.now() };
+  if (useSession.getState().status === "guest") {
+    safeSet(GUEST, JSON.stringify(doc));
+    useSession.setState({ sync: "local" });
+    return;
+  }
   lastWritten = doc.updatedAt;
   lastApplied = doc.updatedAt;
   safeSet(LOCAL(user.uid), JSON.stringify(doc));
@@ -134,6 +146,7 @@ async function onSignedIn(u: AuthUser) {
     if (remote && (!local || remote.updatedAt > local.updatedAt)) apply(remote);
     else if (!remote && local) needPush = true;
     else if (!remote && !local) needPush = importLegacy(u);
+    if (mergeGuestInto(u, remote)) needPush = true;
     useSession.setState({ sync: "saved" });
   } catch (e) {
     useSession.setState({ sync: navigator.onLine ? "error" : "offline", error: friendlyError(e) });
@@ -148,6 +161,48 @@ async function onSignedIn(u: AuthUser) {
   });
   useSession.setState({ ready: true });
   if (needPush) void pushNow();
+}
+
+/** Vừa đăng nhập từ chế độ dùng thử -> chuyển dữ liệu dùng thử vào tài khoản. */
+function mergeGuestInto(u: AuthUser, remote: CloudDoc | null): boolean {
+  const pending = safeGet(MERGE) === "1";
+  try {
+    localStorage.removeItem(MERGE);
+    localStorage.removeItem(MODE);
+  } catch {
+    /* bỏ qua */
+  }
+  if (!pending) return false;
+  let guest: CloudDoc | null = null;
+  try {
+    const v = safeGet(GUEST);
+    guest = v ? (JSON.parse(v) as CloudDoc) : null;
+  } catch {
+    guest = null;
+  }
+  if (!guest) return false;
+  let hasGuestProfile = false;
+  try {
+    hasGuestProfile = !!(JSON.parse(guest.data) as { profile?: unknown }).profile;
+  } catch {
+    return false;
+  }
+  if (!hasGuestProfile) return false;
+  // dữ liệu tài khoản (đã nạp ở bước trước) có hồ sơ chưa
+  const remoteHasProfile = !!remote && !!useStore.getState().profile;
+  const ok =
+    !remoteHasProfile ||
+    window.confirm(
+      `Tài khoản ${u.email} đã có dữ liệu từ trước.\nThay bằng dữ liệu bạn vừa dùng thử? (Bấm "Huỷ" để giữ dữ liệu cũ của tài khoản)`,
+    );
+  try {
+    localStorage.removeItem(GUEST);
+  } catch {
+    /* bỏ qua */
+  }
+  if (!ok) return false;
+  apply({ ...guest, updatedAt: Date.now() });
+  return true;
 }
 
 /** Dữ liệu của phiên bản cũ (chưa có tài khoản) -> hỏi để chuyển vào tài khoản. */
@@ -180,6 +235,7 @@ export function startSession() {
     if (u && cur?.uid === u.uid && useSession.getState().status === "signedIn") return;
     stopUser();
     if (!u) {
+      if (safeGet(MODE) === "guest") return startGuestSession();
       useStore.getState().resetAll();
       useSession.setState({ status: "signedOut", user: null, ready: false, sync: "idle" });
       return;
@@ -199,8 +255,58 @@ export function startSession() {
   });
 }
 
+function startGuestSession() {
+  stopUser();
+  useSession.setState({ status: "guest", user: GUEST_USER, ready: false, sync: "local", error: undefined });
+  useStore.getState().resetAll();
+  const v = safeGet(GUEST);
+  if (v) {
+    try {
+      apply(JSON.parse(v) as CloudDoc);
+    } catch {
+      /* dữ liệu hỏng -> bắt đầu lại */
+    }
+  }
+  unsubStore = useStore.subscribe((s, prev) => {
+    if (!applying && dataChanged(s, prev)) scheduleSave();
+  });
+  useSession.setState({ ready: true });
+}
+
+/** Dùng thử không cần tài khoản (dữ liệu chỉ lưu trên máy này). */
+export function startGuest() {
+  safeSet(MODE, "guest");
+  startGuestSession();
+}
+
+/** Thoát chế độ dùng thử và xoá dữ liệu dùng thử trên máy. */
+export function exitGuest() {
+  stopUser();
+  try {
+    localStorage.removeItem(GUEST);
+    localStorage.removeItem(MODE);
+  } catch {
+    /* bỏ qua */
+  }
+  useStore.getState().resetAll();
+  useSession.setState({ status: "signedOut", user: null, ready: false, sync: "idle" });
+}
+
 export async function signIn() {
-  await backend.signInWithGoogle();
+  if (useSession.getState().status === "guest") {
+    if (saveTimer) await pushNow();
+    safeSet(MERGE, "1");
+  }
+  try {
+    await backend.signInWithGoogle();
+  } catch (e) {
+    try {
+      localStorage.removeItem(MERGE);
+    } catch {
+      /* bỏ qua */
+    }
+    throw e;
+  }
 }
 
 export async function signOut() {

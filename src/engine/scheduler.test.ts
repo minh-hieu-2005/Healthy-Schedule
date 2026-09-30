@@ -158,3 +158,35 @@ describe("predict", () => {
     expect(p.blocks.some((b) => b.cat === "task")).toBe(true);
   });
 });
+
+describe("điều chỉnh theo ngày (bỏ qua / đổi giờ / ghim)", () => {
+  it("bỏ qua bữa trưa và buổi học hôm nay", () => {
+    const p = planDay({ ...base(demoProfile(), []), override: { skip: ["meal:lunch", "commit:c1"] } });
+    expect(p.blocks.some((b) => b.key === "meal:lunch")).toBe(false);
+    expect(p.blocks.some((b) => b.key === "commit:c1")).toBe(false);
+    expect(p.blocks.some((b) => b.key.startsWith("commute:c1"))).toBe(false);
+    noOverlap(p.blocks);
+  });
+  it("đổi giờ tập luyện hôm nay", () => {
+    const p = planDay({ ...base(defaultProfile(), []), date: MON, override: { move: { exercise: 20 * 60 } } });
+    const ex = p.blocks.find((b) => b.key === "exercise")!;
+    expect(ex.start).toBe(20 * 60);
+    expect(ex.userSet).toBe(true);
+    noOverlap(p.blocks);
+  });
+  it("ghim task 'làm ngay' vào đúng giờ đã chọn, phần còn lại xếp tiếp", () => {
+    const p = planDay({ ...base(defaultProfile(), [task("a", 150, 2)]), override: { pin: { a: 14 * 60 } } });
+    const chunks = p.blocks.filter((b) => b.taskId === "a").sort((x, y) => x.start - y.start);
+    const pinned = chunks.find((b) => b.userSet)!;
+    expect(pinned.start).toBe(14 * 60);
+    expect(chunks.reduce((s, b) => s + b.end - b.start, 0)).toBe(150);
+    noOverlap(p.blocks);
+  });
+  it("task đã ghim không bị dời sang ngày khác khi quá tải", () => {
+    const p = planDay({
+      ...base(demoProfile(), [task("due", 300, 0), task("pinned", 60, 5)]),
+      override: { pin: { pinned: 13 * 60 } },
+    });
+    expect(p.moved.map((m) => m.taskId)).not.toContain("pinned");
+  });
+});

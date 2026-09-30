@@ -6,6 +6,7 @@ import type { Task } from "../engine/types";
 import { diffDays, fmtDateShort, fmtDuration, fmtTime, relDayLabel, todayStr } from "../engine/time";
 import { PRIORITY_META } from "../lib/categories";
 import TaskForm from "../components/TaskForm";
+import QuickAdd from "../components/QuickAdd";
 
 type Tab = "pending" | "done";
 
@@ -24,6 +25,7 @@ export default function Tasks() {
               profile: s.profile,
               tasks: s.tasks,
               logs: s.logs,
+              overrides: s.overrides,
               today,
               peak: peakFor(s.logs, today),
               todayPlan: s.plans[today],
@@ -31,7 +33,7 @@ export default function Tasks() {
             14,
           )
         : [],
-    [s.profile, s.tasks, s.logs, s.plans, today],
+    [s.profile, s.tasks, s.logs, s.plans, s.overrides, today],
   );
 
   const schedule = (id: string) => {
@@ -62,7 +64,9 @@ export default function Tasks() {
         </button>
       </div>
 
-      <div className="inline-flex rounded-full bg-white border border-line p-1" role="tablist">
+      <QuickAdd />
+
+      <div className="inline-flex rounded-full bg-card border border-line p-1" role="tablist">
         {(
           [
             ["pending", `Đang chờ (${pending.length})`],
@@ -74,7 +78,7 @@ export default function Tasks() {
             role="tab"
             aria-selected={tab === k}
             onClick={() => setTab(k)}
-            className={`focus-ring rounded-full px-4 py-1.5 text-sm font-semibold ${tab === k ? "bg-ink text-white" : "text-ink-2"}`}
+            className={`focus-ring rounded-full px-4 py-1.5 text-sm font-semibold ${tab === k ? "bg-inverse text-on-inverse" : "text-ink-2"}`}
           >
             {l}
           </button>
@@ -104,7 +108,7 @@ export default function Tasks() {
                   aria-pressed={t.done}
                   aria-label={t.done ? `Đánh dấu chưa xong ${t.title}` : `Hoàn thành ${t.title}`}
                   className={`focus-ring mt-0.5 h-7 w-7 shrink-0 rounded-full border-2 flex items-center justify-center ${
-                    t.done ? "bg-brand border-brand text-white" : "border-[#c9c3dc] hover:border-brand"
+                    t.done ? "bg-brand border-brand text-white" : "border-control hover:border-brand"
                   }`}
                 >
                   {t.done && <Check size={15} strokeWidth={3} />}
@@ -116,7 +120,7 @@ export default function Tasks() {
                       <Pencil size={16} />
                     </button>
                     <button
-                      className="focus-ring rounded-lg p-1.5 text-ink-3 hover:bg-coral-soft hover:text-[#c2361a]"
+                      className="focus-ring rounded-lg p-1.5 text-ink-3 hover:bg-coral-soft hover:text-danger"
                       onClick={() => window.confirm(`Xoá task "${t.title}"?`) && s.deleteTask(t.id)}
                       aria-label={`Xoá ${t.title}`}
                     >
@@ -124,20 +128,47 @@ export default function Tasks() {
                     </button>
                   </div>
                   {t.description && <p className="text-sm text-ink-2 mt-0.5 line-clamp-2">{t.description}</p>}
+                  {!!t.subtasks?.length && (
+                    <ul className="mt-2 space-y-0.5">
+                      {t.subtasks.map((st) => (
+                        <li key={st.id}>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-brand"
+                              checked={st.done}
+                              onChange={() =>
+                                s.updateTask(t.id, { subtasks: t.subtasks!.map((x) => (x.id === st.id ? { ...x, done: !x.done } : x)) })
+                              }
+                            />
+                            <span className={st.done ? "line-through text-ink-3" : "text-ink-2"}>{st.title}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <span className={`chip ${PRIORITY_META[t.priority].cls}`}>{PRIORITY_META[t.priority].label}</span>
-                    <span className="chip bg-[#f0eef5] text-ink-2">
+                    <span className="chip bg-sunken text-ink-2">
                       <Clock3 size={12} /> {fmtDuration(t.estimate)}
                     </span>
+                    {t.repeat && t.repeat !== "none" && (
+                      <span className="chip bg-sunken text-ink-2">🔁 {t.repeat === "daily" ? "Hằng ngày" : "Hằng tuần"}</span>
+                    )}
+                    {!!t.subtasks?.length && (
+                      <span className="chip bg-sunken text-ink-2">
+                        ☑ {t.subtasks.filter((x) => x.done).length}/{t.subtasks.length} việc con
+                      </span>
+                    )}
                     <span
                       className={`chip ${
                         t.done
-                          ? "bg-[#f0eef5] text-ink-2"
+                          ? "bg-sunken text-ink-2"
                           : left < 0
-                            ? "bg-[#ffe1e1] text-[#b3261e]"
+                            ? "bg-danger-soft text-danger"
                             : left <= 1
-                              ? "bg-coral-soft text-[#b8431a]"
-                              : "bg-[#f0eef5] text-ink-2"
+                              ? "bg-coral-soft text-hot"
+                              : "bg-sunken text-ink-2"
                       }`}
                     >
                       <CalendarClock size={12} /> Hạn {t.deadlineTime} {fmtDateShort(t.deadlineDate)}

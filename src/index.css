@@ -1,34 +1,127 @@
 @import "tailwindcss";
 
+/* dark: áp dụng khi <html class="dark"> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
 
+  /* Màu theo vai trò – đổi giá trị ở .dark bên dưới để có giao diện tối */
   --color-ink: #17122b;
   --color-ink-2: #4b4662;
-  --color-ink-3: #7a7593;
+  --color-ink-3: #736e8c;
   --color-line: #ebe6f5;
   --color-bg: #faf7ff;
   --color-card: #ffffff;
+  --color-sunken: #f0eef5;
+  --color-control: #c9c3dc;
+  --color-control-off: #dcd7ea;
+  --color-inverse: #17122b;
+  --color-on-inverse: #ffffff;
+  --color-night: #17122b;
 
   --color-brand: #6c47ff;
   --color-brand-dark: #4f2ee0;
   --color-brand-soft: #efeaff;
   --color-lime: #d4ff3a;
+  --color-on-lime: #17122b;
+  --color-lime-soft: #f4ffd0;
+  --color-olive: #4d6100;
   --color-coral: #ff6b4a;
   --color-coral-soft: #fff0eb;
 
-  /* màu theo nhóm hoạt động (khớp với biểu đồ thống kê) */
-  --color-c-school: #2a78d6;
-  --color-c-task: #eb6834;
-  --color-c-exercise: #1baf7a;
-  --color-c-meal: #eda100;
-  --color-c-fun: #e87ba4;
-  --color-c-sleep: #4a3aa7;
-  --color-c-commute: #8b8799;
+  --color-danger: #b3261e;
+  --color-danger-soft: #ffe9e7;
+  --color-danger-line: #f7c3bd;
+  --color-hot: #b8431a;
+  --color-hot-soft: #fdebe3;
+  --color-hot-line: #f3a58f;
+  --color-amber: #8a5d00;
+  --color-amber-soft: #fff4e0;
+  --color-amber-line: #f6d7a8;
+  --color-ok: #0f7a55;
+  --color-ok-soft: #dcf6ec;
+  --color-ok-line: #b7e6d0;
+  --color-info: #2a5cc9;
+  --color-info-soft: #eef3ff;
+  --color-info-line: #cddbfb;
+  --color-sky: #1683b8;
+  --color-sky-soft: #e3f5fd;
+  --color-sky-line: #9fd8f5;
 
   --radius-xl2: 1.25rem;
   --shadow-card: 0 1px 2px rgb(23 18 43 / 0.04), 0 8px 24px -12px rgb(23 18 43 / 0.12);
   --shadow-pop: 0 12px 40px -12px rgb(76 46 224 / 0.35);
+}
+
+/* màu nhóm hoạt động trên thời gian biểu */
+:root {
+  color-scheme: light;
+  --cat-sleep: #4a3aa7;   --tint-sleep: #ecebf8;
+  --cat-meal: #b27800;    --tint-meal: #fff4d6;
+  --cat-exercise: #128a60; --tint-exercise: #dcf6ec;
+  --cat-study: #2a78d6;   --tint-study: #e3effc;
+  --cat-commute: #6b6780; --tint-commute: #f0eef5;
+  --cat-fun: #c2477a;     --tint-fun: #fde8f0;
+  --cat-task: #d4541f;    --tint-task: #fdebe3;
+  --chart-grid: #efedf5;
+  --chart-axis: #736e8c;
+  --chart-cursor: #f5f2ff;
+  --chart-plan: #cfc4ff;
+  --chart-actual: #6c47ff;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --color-ink: #f2effb;
+  --color-ink-2: #c9c4dc;
+  --color-ink-3: #9a94b3;
+  --color-line: #302a48;
+  --color-bg: #110e1f;
+  --color-card: #1b1730;
+  --color-sunken: #262140;
+  --color-control: #564f73;
+  --color-control-off: #3a3454;
+  --color-inverse: #f2effb;
+  --color-on-inverse: #17122b;
+  --color-night: #241e3d;
+  --color-brand: #8566ff;
+  --color-brand-dark: #a58fff;
+  --color-brand-soft: #2b2253;
+  --color-lime-soft: #28310f;
+  --color-olive: #d4ff3a;
+  --color-coral-soft: #3a2019;
+  --color-danger: #ff8f86;
+  --color-danger-soft: #3b1b1d;
+  --color-danger-line: #6e2f31;
+  --color-hot: #ff9f7e;
+  --color-hot-soft: #3a2219;
+  --color-hot-line: #6e3a26;
+  --color-amber: #f5c96a;
+  --color-amber-soft: #33290f;
+  --color-amber-line: #5f4a1c;
+  --color-ok: #6fdcb0;
+  --color-ok-soft: #13302a;
+  --color-ok-line: #245a47;
+  --color-info: #9bb8ff;
+  --color-info-soft: #1a2242;
+  --color-info-line: #2e3d6b;
+  --color-sky: #78cff5;
+  --color-sky-soft: #132f3c;
+  --color-sky-line: #1f5870;
+  --cat-sleep: #a99dff;   --tint-sleep: #231f45;
+  --cat-meal: #f2c65c;    --tint-meal: #2e2612;
+  --cat-exercise: #5fd3a4; --tint-exercise: #13302a;
+  --cat-study: #7fb3f5;   --tint-study: #172a44;
+  --cat-commute: #aaa4c2; --tint-commute: #262140;
+  --cat-fun: #f39bc0;     --tint-fun: #3a1a2a;
+  --cat-task: #ff9f7e;    --tint-task: #3a2219;
+  --chart-grid: #2c2744;
+  --chart-axis: #9a94b3;
+  --chart-cursor: #2b2253;
+  --chart-plan: #463c78;
+  --chart-actual: #a58fff;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.6);
 }
 
 html {
@@ -79,13 +172,20 @@ body {
 }
 .btn-lime {
   background: var(--color-lime);
-  color: var(--color-ink);
+  color: var(--color-on-lime);
 }
 .btn-lime:hover {
   background: #c6f21f;
 }
+.btn-inverse {
+  background: var(--color-inverse);
+  color: var(--color-on-inverse);
+}
+.btn-inverse:hover {
+  opacity: 0.9;
+}
 .btn-ghost {
-  background: white;
+  background: var(--color-card);
   color: var(--color-ink);
   border: 1px solid var(--color-line);
 }
@@ -93,8 +193,8 @@ body {
   background: var(--color-brand-soft);
 }
 .btn-danger {
-  background: var(--color-coral-soft);
-  color: #c2361a;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -104,7 +204,7 @@ body {
 .field {
   width: 100%;
   border: 1.5px solid var(--color-line);
-  background: white;
+  background: var(--color-card);
   border-radius: 0.9rem;
   padding: 0.6rem 0.8rem;
   font-size: 0.95rem;
@@ -172,4 +272,35 @@ body {
 }
 .no-scrollbar {
   scrollbar-width: none;
+}
+
+/* pháo giấy khi hoàn thành hết việc trong ngày */
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti span {
+  position: absolute;
+  top: -12px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    transform: translateY(105vh) rotate(540deg);
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti {
+    display: none;
+  }
 }

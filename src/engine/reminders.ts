@@ -1,17 +1,25 @@
 // Nhắc nhở: uống nước theo giờ cố định và deadline quan trọng sắp tới.
 // Hàm thuần (không phụ thuộc giao diện) để dễ kiểm thử.
-import type { Task } from "./types";
-import { fmtDuration, parseDate, toMin, todayStr } from "./time";
+import type { Category, Task } from "./types";
+import { fmtDuration, fmtTime, parseDate, toMin, todayStr } from "./time";
 
 export interface Reminder {
   id: string; // khoá duy nhất, dùng để không nhắc lặp lại
-  kind: "water" | "deadline";
+  kind: "water" | "deadline" | "start" | "morning" | "evening";
   title: string;
   body: string;
   taskId?: string;
   /** các khoá cần đánh dấu "đã nhắc" khi hiện nhắc nhở này */
   marks: string[];
   urgent?: boolean;
+}
+
+/** Tóm tắt lịch hôm nay (để nhắc bắt đầu việc, chào buổi sáng, tổng kết tối). */
+export interface TodayInfo {
+  date: string;
+  wake: number;
+  bed: number;
+  blocks: { key: string; title: string; start: number; end: number; cat: Category; done: boolean; /** không nhắc giờ bắt đầu (task vừa tạo / đang tập trung) */ quiet?: boolean }[];
 }
 
 export interface ReminderInput {
@@ -23,6 +31,12 @@ export interface ReminderInput {
   notified: Record<string, number>;
   /** hoãn nhắc: khoá -> thời điểm được nhắc lại */
   snoozed?: Record<string, number>;
+  /** nhắc trước khi task / buổi tập bắt đầu */
+  start?: boolean;
+  startLead?: number;
+  /** lời chào buổi sáng + tổng kết buổi tối */
+  daily?: boolean;
+  today?: TodayInfo;
 }
 
 /** Cửa sổ thời gian nhắc uống nước sau mốc giờ (nếu mở web muộn vẫn được nhắc). */
@@ -74,8 +88,10 @@ export function dueReminders(inp: ReminderInput): Reminder[] {
       const left = deadlineTs(t) - now;
       if (left <= 0) continue;
       const ths = t.priority === "high" ? HIGH_THRESHOLDS : NORMAL_THRESHOLDS;
-      // mốc nhỏ nhất đã chạm tới (vd còn 2 tiếng -> mốc 3h)
-      const reached = ths.filter((h) => left <= h * 3600000);
+      const dl = deadlineTs(t);
+      // mốc đã chạm tới, và task phải được tạo TRƯỚC mốc đó
+      // (vừa tạo task có hạn sau 2 tiếng thì không nhắc ngay – bạn vừa nhập mà)
+      const reached = ths.filter((h) => left <= h * 3600000 && t.createdAt <= dl - h * 3600000);
       if (!reached.length) continue;
       const h = Math.min(...reached);
       const id = `dl:${t.id}:${h}`;
@@ -93,6 +109,57 @@ export function dueReminders(inp: ReminderInput): Reminder[] {
         // đánh dấu cả các mốc lớn hơn để không nhắc lùi lại
         marks: ths.filter((x) => x >= h).map((x) => `dl:${t.id}:${x}`),
       });
+    }
+  }
+  const td = inp.today;
+  if (td && td.date === date) {
+    // nhắc trước khi task / buổi tập bắt đầu
+    if (inp.start) {
+      const lead = inp.startLead ?? 5;
+      for (const b of td.blocks) {
+        if (b.done || b.quiet || (b.cat !== "task" && b.cat !== "exercise")) continue;
+        const until = b.start - nowM;
+        if (until > lead || until < -2) continue;
+        const id = `start:${date}:${b.key}`;
+        if (inp.notified[id] || now < snoozedUntil(id)) continue;
+        out.push({
+          id,
+          kind: "start",
+          title: until > 0 ? `⏱ ${until} phút nữa: ${b.title}` : `▶️ Đến giờ: ${b.title}`,
+          body: `${fmtTime(b.start)} – ${fmtTime(b.end)} (${fmtDuration(b.end - b.start)}). Chuẩn bị nước uống và tắt bớt thông báo mạng xã hội nhé!`,
+          marks: [id],
+        });
+      }
+    }
+    if (inp.daily) {
+      const tasks = td.blocks.filter((b) => b.cat === "task");
+      const mid = `morning:${date}`;
+      if (nowM >= td.wake && nowM < td.wake + 120 && !inp.notified[mid]) {
+        const first = tasks.filter((b) => !b.done).sort((a, b) => a.start - b.start)[0];
+        const mins = tasks.reduce((a, b) => a + b.end - b.start, 0);
+        out.push({
+          id: mid,
+          kind: "morning",
+          title: "☀️ Chào buổi sáng!",
+          body: tasks.length
+            ? `Hôm nay có ${tasks.length} phiên làm việc (${fmtDuration(mins)}). Việc đầu tiên lúc ${fmtTime(first?.start ?? tasks[0].start)}: ${first?.title ?? tasks[0].title}.`
+            : "Hôm nay chưa có task nào. Tận hưởng một ngày nhẹ nhàng, hoặc thêm việc bạn muốn làm nhé!",
+          marks: [mid],
+        });
+      }
+      const eid = `evening:${date}`;
+      const eStart = td.bed - 45;
+      if (eStart < 1440 && nowM >= eStart && nowM < Math.min(td.bed, 1440) && !inp.notified[eid]) {
+        const done = td.blocks.filter((b) => b.done && b.cat !== "sleep").length;
+        const total = td.blocks.filter((b) => b.cat !== "sleep").length;
+        out.push({
+          id: eid,
+          kind: "evening",
+          title: "🌙 Tổng kết ngày",
+          body: `Bạn đã hoàn thành ${done}/${total} hoạt động hôm nay${done === total ? " – tuyệt vời! 🎉" : ""}. Đi ngủ lúc ${fmtTime(td.bed)} để đủ giấc nhé.`,
+          marks: [eid],
+        });
+      }
     }
   }
   return out;

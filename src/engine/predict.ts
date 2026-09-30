@@ -84,7 +84,13 @@ export function predict(logs: Record<string, DayLog>, targetDate: string): Predi
 }
 
 /** Tóm tắt 1 ngày từ lịch + checklist để lưu vào lịch sử. */
-export function summarize(plan: DayPlan, checked: Set<string>, tasks: Task[]): DayLog {
+export function summarize(
+  plan: DayPlan,
+  checked: Set<string>,
+  tasks: Task[],
+  /** phiên chỉ làm được một nửa (key -> phút còn thiếu) */
+  partial: Record<string, number> = {},
+): DayLog {
   const minutes: DayLog["minutes"] = {};
   const hourPlanned = Array(24).fill(0);
   const hourDone = Array(24).fill(0);
@@ -99,12 +105,15 @@ export function summarize(plan: DayPlan, checked: Set<string>, tasks: Task[]): D
     const d = isDone(b);
     if (d) blocksDone++;
     if (b.cat === "task") {
+      const half = !!partial[b.key];
       taskPlannedMin += len;
-      if (d) taskDoneMin += len;
-      for (let m = b.start; m < b.end; m += 5) {
+      if (d) taskDoneMin += half ? Math.round(len / 2) : len;
+      let i = 0;
+      for (let m = b.start; m < b.end; m += 5, i++) {
         const h = Math.floor((m % 1440) / 60);
         hourPlanned[h] += 5;
-        if (d) hourDone[h] += 5;
+        // làm một nửa: chỉ tính nửa đầu của phiên
+        if (d && (!half || i < len / 10)) hourDone[h] += 5;
       }
     }
   }
