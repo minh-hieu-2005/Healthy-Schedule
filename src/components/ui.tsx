@@ -39,7 +39,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`pop-in w-full ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"} max-h-[92vh] overflow-y-auto bg-card rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl`}
+        className={`pop-in w-full ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"} max-h-[92dvh] overflow-y-auto overscroll-contain bg-card rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:p-6 shadow-2xl`}
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">{title}</h2>

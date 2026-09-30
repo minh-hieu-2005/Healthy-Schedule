@@ -6,6 +6,7 @@ import { useFocus, useInbox, type InboxItem } from "../store/ui";
 import { dueReminders, type Reminder, type TodayInfo } from "../engine/reminders";
 import { todayStr } from "../engine/time";
 import { systemNotify } from "../lib/notify";
+import { playTink } from "../lib/sound";
 
 const CHECK_EVERY = 20_000; // kiểm tra mỗi 20 giây
 const SNOOZE_MIN = 10;
@@ -63,8 +64,12 @@ export function useReminderTicker() {
       });
       if (!due.length) return;
       st.markNotified(due.flatMap((d) => d.marks));
+      const before = useInbox.getState().toast.length;
       useInbox.getState().push(due);
+      const added = useInbox.getState().toast.length > before;
       if (document.visibilityState !== "visible") for (const d of due) void systemNotify(d.title, d.body, d.id);
+      // đang mở trang -> kêu "tink" khi pop-up hiện (thông báo hệ thống đã có âm thanh riêng)
+      else if (added && r.sound) void playTink();
     };
     tick();
     const id = setInterval(tick, CHECK_EVERY);
@@ -207,7 +212,7 @@ export function ReminderToast() {
   const more = toast.length - 1;
   return (
     <div
-      className="fixed z-[45] left-3 right-3 bottom-[5.25rem] md:bottom-6 md:left-auto md:right-6 md:w-[25rem]"
+      className="fixed z-[45] left-3 right-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] md:bottom-6 md:left-auto md:right-6 md:w-[25rem]"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onFocus={() => setHover(true)}
@@ -272,7 +277,7 @@ function InboxPanel({ onClose, floating }: { onClose: () => void; floating?: boo
       aria-label="Thông báo"
       className={`pop-in card shadow-2xl p-2 z-[60] ${
         floating
-          ? "fixed left-3 right-3 bottom-[5.25rem] md:bottom-6 md:left-auto md:right-6 md:w-[25rem]"
+          ? "fixed left-3 right-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] md:bottom-6 md:left-auto md:right-6 md:w-[25rem]"
           : "absolute right-0 mt-2 w-[min(24rem,calc(100vw-1.5rem))]"
       }`}
     >

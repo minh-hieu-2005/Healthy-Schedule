@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -55,6 +55,15 @@ export default function Today() {
   useEffect(() => {
     setDate(todayStr());
   }, [loc.key]);
+
+  // lối tắt "Thêm task" từ biểu tượng ứng dụng (nhấn giữ icon): #/hom-nay?them=1
+  const nav = useNavigate();
+  useEffect(() => {
+    if (new URLSearchParams(loc.search).has("them")) {
+      setAdding(true);
+      nav("/hom-nay", { replace: true });
+    }
+  }, [loc.search, nav]);
 
   const peak = useMemo(() => peakFor(s.logs, today), [s.logs, today]);
   const range = useMemo(
@@ -216,7 +225,7 @@ export default function Today() {
         </div>
 
         {/* Cột phải */}
-        <aside className="space-y-4">
+        <aside className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 items-start">
           <GettingStarted onAddTask={addTask} />
           {isToday && <WaterTracker date={today} />}
           <PredictionCard pred={tomorrowPred} />

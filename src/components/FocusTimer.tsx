@@ -66,7 +66,7 @@ export default function FocusTimer() {
     return (
       <button
         onClick={() => minimize(false)}
-        className="focus-ring fixed z-[45] left-3 bottom-[5.25rem] md:bottom-6 md:left-6 flex items-center gap-2 rounded-full bg-night text-white pl-3 pr-4 py-2 shadow-2xl"
+        className="focus-ring fixed z-[45] left-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] md:bottom-6 md:left-6 flex items-center gap-2 rounded-full bg-night text-white pl-3 pr-4 py-2 shadow-2xl"
         aria-label={`Đang tập trung: ${s.title}, còn ${mmss(left)}. Bấm để mở`}
       >
         <span className={`h-2.5 w-2.5 rounded-full ${paused ? "bg-amber-soft" : "bg-lime animate-pulse"}`} />

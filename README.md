@@ -36,6 +36,7 @@ Khi có quá nhiều việc, lịch tự cân bằng lại, luôn có giới h�
 | Tính năng | Mô tả |
 |---|---|
 | Thông báo dạng toast | Hiện ở cuối màn hình, **tự ẩn sau 12 giây**; tất cả được giữ trong hộp 🔔 để xem lại. |
+| 🔔 Tiếng “tink” | Kêu nhẹ mỗi khi pop-up nhắc nhở hiện lên (bật/tắt và nghe thử trong Cài đặt → Thông báo). Âm thanh tạo bằng Web Audio, không cần file. |
 | 💧 Nhắc uống nước | Lúc 8:00, 14:00, 17:00 (đổi được). Bấm “Đã uống” để cộng cốc; theo dõi số cốc/ngày theo mục tiêu. |
 | ⏰ Nhắc deadline | Ưu tiên cao: trước 24h, 3h, 1h; task khác: trước 1h. **Không nhắc ngay khi vừa tạo task.** |
 | ▶️ Nhắc giờ bắt đầu | Trước khi task / buổi tập bắt đầu vài phút (mặc định 5 phút), có nút “Bắt đầu tập trung”. |
@@ -54,7 +55,7 @@ Khi có quá nhiều việc, lịch tự cân bằng lại, luôn có giới h�
 | Tính năng | Mô tả |
 |---|---|
 | 🌙 Chế độ tối | Sáng / Tối / Theo hệ thống. |
-| 📱 Cài như ứng dụng (PWA) | Thêm vào màn hình chính trên Android, iPhone, máy tính. |
+| 📱 Tải về như ứng dụng (PWA) | Cài lên màn hình chính iPhone, iPad, Android, máy tính – không cần App Store / CH Play. Mở toàn màn hình, **xem lịch được cả khi mất mạng**, xoay ngang trên iPad, nhấn giữ biểu tượng để dùng lối tắt “Thêm task”. Nút **Tải app** có hướng dẫn riêng cho từng thiết bị. |
 | 📅 Xuất lịch | Tải file `.ics` để nhập vào Google Calendar / Apple Calendar, hoặc thêm từng hoạt động vào Google Calendar. |
 
 > Lưu ý: vì là website miễn phí (không có máy chủ gửi thông báo), Smart Life chỉ nhắc được khi trang hoặc ứng dụng đang mở (ở tab nào cũng được). Mở web muộn trong vòng 1 tiếng sau giờ nhắc uống nước vẫn nhận được nhắc.

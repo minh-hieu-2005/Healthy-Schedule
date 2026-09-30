@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BellRing, Check, Flame, ListPlus, MousePointerClick, PartyPopper, Share2, Smartphone, X } from "lucide-react";
 import { useStore } from "../../store/useStore";
-import { isIOS, useInstall } from "../../store/ui";
+import { useInstall } from "../../store/ui";
 import { notifyPermission, requestNotifyPermission, systemNotify } from "../../lib/notify";
 import { motivation, weekRecap } from "../../engine/motivation";
 import { addDays, fmtDateShort, fmtDuration, fmtHours, todayStr, weekday } from "../../engine/time";
-import { Modal } from "../ui";
 
 /** "Bắt đầu với Smart Life": 4 bước đầu tiên cho người mới. */
 export function GettingStarted({ onAddTask }: { onAddTask: () => void }) {
@@ -14,9 +13,8 @@ export function GettingStarted({ onAddTask }: { onAddTask: () => void }) {
   const hasCheck = useStore((s) => Object.values(s.checks).some((c) => c.length > 0));
   const hide = useStore((s) => s.prefs.hideGettingStarted);
   const setPrefs = useStore((s) => s.setPrefs);
-  const { canInstall, installed, install } = useInstall();
+  const { installed, installOrGuide } = useInstall();
   const [perm, setPerm] = useState(notifyPermission());
-  const [iosHelp, setIosHelp] = useState(false);
 
   const steps = [
     { id: "task", icon: ListPlus, title: "Thêm task đầu tiên", done: hasTask, action: onAddTask, label: "Thêm" },
@@ -39,8 +37,8 @@ export function GettingStarted({ onAddTask }: { onAddTask: () => void }) {
       icon: Smartphone,
       title: "Cài Smart Life lên màn hình chính",
       done: installed,
-      action: canInstall ? () => void install() : () => setIosHelp(true),
-      label: "Cài",
+      action: () => void installOrGuide(),
+      label: "Tải về",
     },
   ];
   const doneN = steps.filter((s) => s.done).length;
@@ -86,33 +84,6 @@ export function GettingStarted({ onAddTask }: { onAddTask: () => void }) {
           </li>
         ))}
       </ul>
-      <Modal open={iosHelp} onClose={() => setIosHelp(false)} title="Cài Smart Life lên màn hình chính">
-        <div className="space-y-3 text-sm text-ink-2">
-          {isIOS() ? (
-            <ol className="list-decimal pl-5 space-y-1.5">
-              <li>Mở Smart Life bằng <b>Safari</b>.</li>
-              <li>Bấm nút <b>Chia sẻ</b> (ô vuông có mũi tên lên).</li>
-              <li>Chọn <b>“Thêm vào MH chính”</b> → <b>Thêm</b>.</li>
-            </ol>
-          ) : (
-            <ol className="list-decimal pl-5 space-y-1.5">
-              <li>Mở Smart Life bằng <b>Chrome</b> hoặc <b>Edge</b>.</li>
-              <li>Bấm menu <b>⋮</b> ở góc trên.</li>
-              <li>Chọn <b>“Cài đặt ứng dụng”</b> hoặc <b>“Thêm vào màn hình chính”</b>.</li>
-            </ol>
-          )}
-          <p>Sau khi cài, Smart Life mở như một ứng dụng riêng, có biểu tượng trên màn hình và nhận thông báo khi đang mở.</p>
-          <button
-            className="btn btn-primary w-full"
-            onClick={() => {
-              useInstall.setState({ installed: true });
-              setIosHelp(false);
-            }}
-          >
-            Tôi đã cài xong
-          </button>
-        </div>
-      </Modal>
     </section>
   );
 }

@@ -25,6 +25,8 @@ export interface ReminderSettings {
   startLead: number;
   /** chào buổi sáng + tổng kết buổi tối */
   daily: boolean;
+  /** phát tiếng "tink" khi thông báo hiện lên */
+  sound: boolean;
 }
 
 export const defaultReminders = (): ReminderSettings => ({
@@ -35,6 +37,7 @@ export const defaultReminders = (): ReminderSettings => ({
   start: true,
   startLead: 5,
   daily: true,
+  sound: true,
 });
 
 export interface UiPrefs {

@@ -79,23 +79,57 @@ interface InstallState {
   canInstall: boolean;
   installed: boolean;
   install: () => Promise<boolean>;
+  /** hộp hướng dẫn cài (dùng khi trình duyệt không tự hiện nút cài, vd. Safari) */
+  guide: boolean;
+  setGuide: (v: boolean) => void;
+  /** Bấm "Cài ứng dụng": có nút cài của trình duyệt thì dùng, không thì mở hướng dẫn. */
+  installOrGuide: () => Promise<void>;
 }
 
 let deferred: BeforeInstallPromptEvent | null = null;
 
-export const useInstall = create<InstallState>()((set) => ({
+/** Đang chạy trong cửa sổ ứng dụng đã cài (không phải tab trình duyệt). */
+export function isStandalone() {
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+const INSTALLED = "smart-life:installed";
+function readInstalledFlag() {
+  try {
+    return localStorage.getItem(INSTALLED) === "1";
+  } catch {
+    return false;
+  }
+}
+/** Ghi nhớ "đã cài" trên thiết bị này (Safari không báo cho trang biết). */
+export function markInstalled() {
+  try {
+    localStorage.setItem(INSTALLED, "1");
+  } catch {
+    /* bỏ qua */
+  }
+  useInstall.setState({ installed: true, guide: false });
+}
+
+export const useInstall = create<InstallState>()((set, get) => ({
   canInstall: false,
-  installed:
-    typeof window !== "undefined" &&
-    (window.matchMedia?.("(display-mode: standalone)").matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true),
+  installed: typeof window !== "undefined" && (isStandalone() || readInstalledFlag()),
   install: async () => {
     if (!deferred) return false;
     await deferred.prompt();
     const r = await deferred.userChoice;
     deferred = null;
-    set({ canInstall: false, installed: r.outcome === "accepted" });
+    set({ canInstall: false });
+    if (r.outcome === "accepted") markInstalled();
     return r.outcome === "accepted";
+  },
+  guide: false,
+  setGuide: (v) => set({ guide: v }),
+  installOrGuide: async () => {
+    if (get().canInstall) await get().install();
+    else set({ guide: true });
   },
 }));
 
@@ -105,7 +139,18 @@ export function listenInstallPrompt() {
     deferred = e as BeforeInstallPromptEvent;
     useInstall.setState({ canInstall: true });
   });
-  window.addEventListener("appinstalled", () => useInstall.setState({ installed: true, canInstall: false }));
+  window.addEventListener("appinstalled", () => {
+    useInstall.setState({ canInstall: false });
+    markInstalled();
+  });
 }
 
-export const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+/** iPhone / iPad (iPadOS 13+ tự xưng là "Macintosh" nhưng có màn hình cảm ứng). */
+export const isIOS = () =>
+  /iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+export type Platform = "ios" | "android" | "desktop";
+export const platform = (): Platform => (isIOS() ? "ios" : /android/i.test(navigator.userAgent) ? "android" : "desktop");
+
+/** Mở trong trình duyệt của Zalo, Facebook, Messenger, Instagram, TikTok… (không cài app được từ đây). */
+export const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\/|TikTok|musical_ly|Messenger/i.test(navigator.userAgent);

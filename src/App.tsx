@@ -14,6 +14,7 @@ import Logo from "./components/Logo";
 import UserMenu from "./components/UserMenu";
 import { BellButton, ReminderToast, useReminderTicker } from "./components/ReminderCenter";
 import FocusTimer from "./components/FocusTimer";
+import InstallGuide from "./components/InstallGuide";
 import { useSession } from "./cloud/session";
 
 // Trang thống kê dùng thư viện biểu đồ khá nặng -> chỉ tải khi mở trang
@@ -56,7 +57,7 @@ function useTheme() {
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && mq.matches);
       document.documentElement.classList.toggle("dark", dark);
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#110e1f" : "#6C47FF");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#110e1f" : "#faf7ff");
     };
     apply();
     try {
@@ -90,9 +91,9 @@ function GuestBanner() {
 function AppShell({ children }: { children: ReactNode }) {
   useReminderTicker();
   return (
-    <div className="min-h-dvh pb-24 md:pb-10">
+    <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-10">
       <GuestBanner />
-      <header className="sticky top-0 z-40 bg-bg/85 backdrop-blur border-b border-line">
+      <header className="sticky top-[env(safe-area-inset-top)] z-40 bg-bg/85 backdrop-blur border-b border-line">
         <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between gap-4">
           <Link to="/" className="focus-ring rounded-xl" aria-label="Smart Life – trang giới thiệu">
             <Logo />
@@ -193,6 +194,8 @@ export default function App() {
     window.scrollTo(0, 0);
   }, [pathname]);
   return (
+    <>
+    <InstallGuide />
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/dang-nhap" element={<Login />} />
@@ -212,5 +215,6 @@ export default function App() {
       <Route path="/cai-dat" element={<RequireProfile><Settings /></RequireProfile>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

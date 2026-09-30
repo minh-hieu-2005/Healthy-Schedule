@@ -12,11 +12,13 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { startSession } from "./cloud/session";
 import { registerServiceWorker } from "./lib/notify";
 import { listenInstallPrompt } from "./store/ui";
+import { unlockAudioOnFirstGesture } from "./lib/sound";
 
 // Bắt đầu theo dõi đăng nhập và đăng ký service worker (thông báo hệ thống)
 startSession();
 void registerServiceWorker();
 listenInstallPrompt();
+unlockAudioOnFirstGesture();
 
 // HashRouter: các đường dẫn dạng /#/hom-nay nên tải lại trang
 // trên GitHub Pages không bị lỗi 404.

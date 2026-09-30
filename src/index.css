@@ -133,6 +133,39 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  /* khi cài như ứng dụng trên iPhone/iPad: chừa chỗ cho tai thỏ, thanh trạng thái, cạnh cong */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  overscroll-behavior-y: none;
+}
+/* nền phía sau thanh trạng thái (giờ, pin) khi mở dạng ứng dụng */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: env(safe-area-inset-top);
+  background: var(--color-bg);
+  z-index: 90;
+  pointer-events: none;
+}
+/* iPhone/iPad tự phóng to khi chạm vào ô nhập chữ nhỏ hơn 16px -> giữ 16px trên màn hình cảm ứng */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+/* chế độ ứng dụng: không cho bôi đen nhầm nút khi nhấn giữ */
+@media (display-mode: standalone) {
+  button,
+  nav a {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
 }
 
 @layer components {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BellRing, CalendarPlus, Database, Download, LogIn, LogOut, Plus, RotateCcw, Save, Send, Smartphone, Trash2 } from "lucide-react";
+import { BellRing, CalendarPlus, Database, Download, LogIn, LogOut, Plus, RotateCcw, Save, Send, Smartphone, Trash2, Volume2 } from "lucide-react";
+import { playTink } from "../lib/sound";
 import { Link } from "react-router-dom";
 import { defaultReminders, peakFor, useStore } from "../store/useStore";
 import { exitGuest, signOut, useSession } from "../cloud/session";
@@ -298,6 +299,29 @@ function NotificationSettings() {
       </div>
 
       <div className="rounded-2xl border border-line p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold">🔔 Âm thanh khi có thông báo</p>
+            <p className="text-sm text-ink-3">Kêu “tink” nhẹ mỗi khi có pop-up nhắc nhở hiện lên.</p>
+          </div>
+          <Toggle
+            checked={reminders.sound}
+            onChange={(v) => {
+              setReminders({ sound: v });
+              if (v) void playTink();
+            }}
+            label="Âm thanh khi có thông báo"
+          />
+        </div>
+        <button className="btn btn-ghost text-sm" onClick={() => void playTink()}>
+          <Volume2 size={16} /> Nghe thử
+        </button>
+        {isIOS() && (
+          <p className="text-xs text-ink-3">Trên iPhone / iPad: tắt chế độ Im lặng (gạt công tắc bên hông hoặc trong Trung tâm điều khiển) thì mới nghe được.</p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-line p-4 space-y-3">
         <div className="flex items-start gap-3">
           <BellRing size={20} className="text-brand shrink-0 mt-0.5" />
           <div>
@@ -340,7 +364,7 @@ function download(name: string, text: string, type: string) {
 function AppSettings() {
   const compact = useStore((st) => st.prefs.compact);
   const setPrefs = useStore((st) => st.setPrefs);
-  const { canInstall, installed, install } = useInstall();
+  const { installed, installOrGuide } = useInstall();
 
   const exportIcs = (all: boolean) => {
     const st = useStore.getState();
@@ -373,19 +397,15 @@ function AppSettings() {
         </p>
         {installed ? (
           <p className="text-sm text-ok font-semibold">✓ Đã cài trên thiết bị này.</p>
-        ) : canInstall ? (
+        ) : (
           <>
-            <p className="text-sm text-ink-2">Có biểu tượng trên màn hình, mở nhanh như app và nhận thông báo khi đang mở.</p>
-            <button className="btn btn-primary" onClick={() => void install()}>
-              <Download size={18} /> Cài đặt ngay
+            <p className="text-sm text-ink-2">
+              Dùng Smart Life như một ứng dụng trên điện thoại, iPad hoặc máy tính: có biểu tượng trên màn hình chính, mở toàn màn hình, xem lịch được cả khi mất mạng.
+            </p>
+            <button className="btn btn-primary" onClick={() => void installOrGuide()}>
+              <Download size={18} /> Tải về máy
             </button>
           </>
-        ) : (
-          <p className="text-sm text-ink-2">
-            {isIOS()
-              ? "Trên iPhone: mở bằng Safari → nút Chia sẻ → “Thêm vào MH chính”."
-              : "Trên Chrome / Edge: bấm menu ⋮ → “Cài đặt ứng dụng” hoặc “Thêm vào màn hình chính”."}
-          </p>
         )}
       </div>
 

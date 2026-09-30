@@ -19,6 +19,7 @@ import {
 import Logo from "../components/Logo";
 import { useStore } from "../store/useStore";
 import { startGuest, useSession } from "../cloud/session";
+import { useInstall } from "../store/ui";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -61,6 +62,7 @@ export default function Landing() {
   const status = useSession((s) => s.status);
   const ready = useSession((s) => s.ready);
   const inside = (status === "signedIn" || status === "guest") && ready;
+  const { installed, installOrGuide } = useInstall();
 
   const open = () => nav(profile ? "/hom-nay" : "/bat-dau");
   /** Dùng thử ngay với dữ liệu mẫu, không cần tài khoản. */
@@ -81,6 +83,12 @@ export default function Landing() {
       <div className="blob-bg">
         <header className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
           <Logo />
+          <div className="flex items-center gap-2">
+          {!installed && (
+            <button className="btn btn-ghost text-sm px-3" onClick={() => void installOrGuide()}>
+              <Smartphone size={16} /> Tải app
+            </button>
+          )}
           {inside ? (
             <button className="btn btn-primary text-sm" onClick={open}>
               Mở lịch của tôi <ArrowRight size={16} />
@@ -90,6 +98,7 @@ export default function Landing() {
               Đăng nhập
             </button>
           )}
+          </div>
         </header>
 
         <section className="mx-auto max-w-6xl px-4 pt-6 pb-14 md:pt-12 md:pb-20 grid md:grid-cols-[1.05fr_0.95fr] gap-10 items-center">
@@ -121,7 +130,12 @@ export default function Landing() {
                 {inside ? "Xem với dữ liệu mẫu" : "Đăng nhập bằng Gmail"}
               </button>
             </div>
-            <p className="mt-4 text-sm text-ink-3">
+            {!installed && (
+              <button className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline" onClick={() => void installOrGuide()}>
+                <Smartphone size={16} /> Tải về điện thoại, iPad như một ứng dụng
+              </button>
+            )}
+            <p className="mt-3 text-sm text-ink-3">
               {inside ? "Dữ liệu của bạn được lưu riêng." : "Miễn phí · Dùng thử không cần tài khoản · Đăng nhập Gmail để lưu"}
             </p>
           </div>
