@@ -60,6 +60,10 @@ Khi có quá nhiều việc, lịch tự cân bằng lại, luôn có giới h�
 
 > Lưu ý: vì là website miễn phí (không có máy chủ gửi thông báo), Smart Life chỉ nhắc được khi trang hoặc ứng dụng đang mở (ở tab nào cũng được). Mở web muộn trong vòng 1 tiếng sau giờ nhắc uống nước vẫn nhận được nhắc.
 
+## Kiến trúc
+
+![Kiến trúc hệ thống Smart Life](docs/kien-truc.png)
+
 ## Cách thuật toán xếp lịch hoạt động
 
 Mã nguồn chính: [`src/engine/scheduler.ts`](src/engine/scheduler.ts).
